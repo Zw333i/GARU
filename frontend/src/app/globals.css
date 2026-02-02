@@ -1,0 +1,170 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Dark mode (default) */
+:root {
+  --deep-void: #0F172A;
+  --gunmetal: #1E293B;
+  --electric-lime: #84CC16;
+  --hot-pink: #EC4899;
+  --ghost-white: #F8FAFC;
+  --surface: #334155;
+  --muted: #94A3B8;
+}
+
+/* Light mode */
+html.light-mode {
+  --deep-void: #F8FAFC;
+  --gunmetal: #E2E8F0;
+  --electric-lime: #65A30D;
+  --hot-pink: #DB2777;
+  --ghost-white: #0F172A;
+  --surface: #CBD5E1;
+  --muted: #64748B;
+}
+
+* {
+  box-sizing: border-box;
+  padding: 0;
+  margin: 0;
+}
+
+html,
+body {
+  max-width: 100vw;
+  overflow-x: hidden;
+  background-color: var(--deep-void);
+  color: var(--ghost-white);
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--gunmetal);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--surface);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+/* Utility classes */
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-electric-lime to-green-400;
+  }
+  
+  .glow-lime {
+    box-shadow: 0 0 20px rgba(132, 204, 22, 0.4);
+  }
+  
+  .glow-pink {
+    box-shadow: 0 0 20px rgba(236, 72, 153, 0.4);
+  }
+  
+  .card-hover {
+    @apply transition-all duration-300 hover:scale-[1.02] hover:shadow-xl;
+  }
+  
+  .glass {
+    background-color: color-mix(in srgb, var(--gunmetal) 80%, transparent);
+    border: 1px solid color-mix(in srgb, var(--surface) 50%, transparent);
+    @apply backdrop-blur-lg;
+  }
+}
+
+/* Shot chart styles */
+.shot-made {
+  fill: var(--electric-lime);
+  opacity: 0.8;
+}
+
+.shot-missed {
+  fill: var(--hot-pink);
+  opacity: 0.6;
+}
+
+/* Player card flip animation */
+.card-flip {
+  perspective: 1000px;
+}
+
+.card-flip-inner {
+  transition: transform 0.6s;
+  transform-style: preserve-3d;
+}
+
+.card-flip.flipped .card-flip-inner {
+  transform: rotateY(180deg);
+}
+
+.card-front,
+.card-back {
+  backface-visibility: hidden;
+}
+
+.card-back {
+  transform: rotateY(180deg);
+}
+
+/* Neon glow effect for buttons */
+.neon-button {
+  position: relative;
+  overflow: hidden;
+}
+
+.neon-button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(132, 204, 22, 0.3),
+    transparent
+  );
+  transition: left 0.5s;
+}
+
+.neon-button:hover::before {
+  left: 100%;
+}
+
+/* Loading animation */
+.loader {
+  width: 48px;
+  height: 48px;
+  border: 5px solid var(--surface);
+  border-bottom-color: var(--electric-lime);
+  border-radius: 50%;
+  display: inline-block;
+  animation: rotation 1s linear infinite;
+}
+
+@keyframes rotation {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}

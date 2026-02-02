@@ -1,0 +1,40 @@
+name: Update NBA Data
+
+on:
+  schedule:
+    # Run every Monday at 6 AM UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  update-data:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: Run data fetch script
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          cd backend
+          python scripts/fetch_nba_data.py
+
+      - name: Upload data artifact (if local JSON generated)
+        uses: actions/upload-artifact@v4
+        with:
+          name: nba-data
+          path: backend/players_data.json
+          if-no-files-found: ignore
