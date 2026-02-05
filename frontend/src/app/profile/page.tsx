@@ -1,9 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect } from 'react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
-import { signInWithGoogle, signOut, supabase, getUserAchievements, ACHIEVEMENTS, UserAchievement } from '@/lib/supabase'
+import { signInWithGoogle, signOut, ACHIEVEMENTS, UserAchievement } from '@/lib/supabase'
+import { useAuthStore } from '@/store/authStore'
+import { useSessionDataStore } from '@/store/sessionDataStore'
 import {
   BasketballIcon,
   ChartIcon,
@@ -29,10 +31,33 @@ const achievementIcons: Record<string, React.FC<{ size?: number; className?: str
 }
 
 export default function ProfilePage() {
-  const [user, setUser] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [isGuest, setIsGuest] = useState(true)
-  const [userStats, setUserStats] = useState({
+  // Use centralized auth and session data stores
+  const { user, isAuthenticated, isLoading: authLoading } = useAuthStore()
+  const { 
+    userStats: sessionStats, 
+    achievements: sessionAchievements,
+    isStatsLoaded, 
+    isStatsLoading, 
+    fetchUserStats 
+  } = useSessionDataStore()
+
+  const loading = authLoading
+  const isGuest = !isAuthenticated
+  
+  // Convert session stats to local format
+  const userStats = sessionStats ? {
+    gamesPlayed: sessionStats.gamesPlayed,
+    wins: sessionStats.wins,
+    losses: sessionStats.losses,
+    winRate: sessionStats.wins + sessionStats.losses > 0 
+      ? sessionStats.winRate 
+      : '--' as string | number,
+    currentStreak: sessionStats.currentStreak,
+    bestStreak: sessionStats.bestStreak,
+    dailyChallenges: sessionStats.dailyChallengesCompleted,
+    xp: sessionStats.xp,
+    level: sessionStats.level,
+  } : {
     gamesPlayed: 0,
     wins: 0,
     losses: 0,
@@ -42,67 +67,16 @@ export default function ProfilePage() {
     dailyChallenges: 0,
     xp: 0,
     level: 1,
-  })
-  const [userAchievements, setUserAchievements] = useState<UserAchievement[]>([])
-
-  useEffect(() => {
-    // Check current session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null)
-      setIsGuest(!session?.user)
-      setLoading(false)
-      
-      if (session?.user) {
-        fetchUserData(session.user.id)
-      }
-    })
-
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null)
-      setIsGuest(!session?.user)
-      
-      if (session?.user) {
-        fetchUserData(session.user.id)
-      }
-    })
-
-    return () => subscription.unsubscribe()
-  }, [])
-
-  const fetchUserData = async (userId: string) => {
-    try {
-      // Fetch user stats from users table
-      const { data: userData } = await supabase
-        .from('users')
-        .select('xp, level, wins, losses, current_streak, best_streak, games_played')
-        .eq('id', userId)
-        .single()
-      
-      if (userData) {
-        const wins = userData.wins || 0
-        const losses = userData.losses || 0
-        const total = wins + losses
-        setUserStats({
-          gamesPlayed: userData.games_played || 0,
-          wins: wins,
-          losses: losses,
-          winRate: total > 0 ? Math.round((wins / total) * 100) : '--',
-          currentStreak: userData.current_streak || 0,
-          bestStreak: userData.best_streak || 0,
-          dailyChallenges: 0,
-          xp: userData.xp || 0,
-          level: userData.level || 1,
-        })
-      }
-      
-      // Fetch achievements
-      const achievements = await getUserAchievements(userId)
-      setUserAchievements(achievements)
-    } catch (err) {
-      console.warn('Error fetching user data:', err)
-    }
   }
+  
+  const userAchievements = sessionAchievements
+
+  // Fetch stats when user is authenticated (uses session cache)
+  useEffect(() => {
+    if (user && isAuthenticated && !isStatsLoaded && !isStatsLoading) {
+      fetchUserStats(user.id)
+    }
+  }, [user, isAuthenticated, isStatsLoaded, isStatsLoading, fetchUserStats])
 
   const handleGoogleSignIn = async () => {
     try {

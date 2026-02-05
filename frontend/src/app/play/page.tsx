@@ -1,8 +1,10 @@
 'use client'
 
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { clsx } from 'clsx'
+import { supabase } from '@/lib/supabase'
 import { 
   GamepadIcon, 
   SearchIcon, 
@@ -18,6 +20,7 @@ interface GameModeProps {
   Icon: React.FC<{ className?: string; size?: number }>
   difficulty: string
   color: 'lime' | 'blue' | 'pink' | 'purple'
+  gamesPlayed: number
 }
 
 const colorClasses = {
@@ -51,14 +54,15 @@ const colorClasses = {
   },
 }
 
-const gameModes: GameModeProps[] = [
+// Game mode definitions (without gamesPlayed - that comes from state)
+const gameModeDefinitions = [
   {
     id: 'whos-that',
     title: "Who's That Role Player?",
     description: 'Guess the player from their image and hints about their stats.',
     Icon: SearchIcon,
     difficulty: 'Easy',
-    color: 'lime',
+    color: 'lime' as const,
   },
   {
     id: 'the-journey',
@@ -66,7 +70,7 @@ const gameModes: GameModeProps[] = [
     description: 'Guess which player took this career path through different teams.',
     Icon: JourneyIcon,
     difficulty: 'Medium',
-    color: 'blue',
+    color: 'blue' as const,
   },
   {
     id: 'blind-comparison',
@@ -74,7 +78,7 @@ const gameModes: GameModeProps[] = [
     description: 'Two stat lines, no names. Pick who you would draft. Get surprised!',
     Icon: CompareIcon,
     difficulty: 'Hard',
-    color: 'pink',
+    color: 'pink' as const,
   },
   {
     id: 'stat-attack',
@@ -82,11 +86,11 @@ const gameModes: GameModeProps[] = [
     description: 'Given a stat, guess if the player is above or below the league average.',
     Icon: ChartIcon,
     difficulty: 'Medium',
-    color: 'purple',
+    color: 'purple' as const,
   },
 ]
 
-function GameModeCard({ id, title, description, Icon, difficulty, color }: GameModeProps) {
+function GameModeCard({ id, title, description, Icon, difficulty, color, gamesPlayed }: GameModeProps) {
   const colors = colorClasses[color]
 
   return (
@@ -123,7 +127,7 @@ function GameModeCard({ id, title, description, Icon, difficulty, color }: GameM
 
         <div className="flex items-center justify-between">
           <span className="text-sm text-muted">
-            <span className="font-bold text-ghost-white">0</span> played
+            <span className="font-bold text-ghost-white">{gamesPlayed}</span> played
           </span>
           <span className={clsx('text-sm font-medium flex items-center gap-1', colors.text)}>
             Play Now
@@ -138,6 +142,55 @@ function GameModeCard({ id, title, description, Icon, difficulty, color }: GameM
 }
 
 export default function PlayPage() {
+  const [gamesPlayedCounts, setGamesPlayedCounts] = useState<Record<string, number>>({
+    'whos-that': 0,
+    'the-journey': 0,
+    'blind-comparison': 0,
+    'stat-attack': 0,
+  })
+
+  // Fetch games played counts from database
+  useEffect(() => {
+    const fetchGamesCounts = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) return
+
+        // Fetch all game scores for the user and count by game_type
+        const { data: scores } = await supabase
+          .from('game_scores')
+          .select('game_type')
+          .eq('user_id', user.id)
+
+        if (scores) {
+          const counts: Record<string, number> = {
+            'whos-that': 0,
+            'the-journey': 0,
+            'blind-comparison': 0,
+            'stat-attack': 0,
+          }
+          scores.forEach((score) => {
+            const gameType = score.game_type
+            if (gameType in counts) {
+              counts[gameType]++
+            }
+          })
+          setGamesPlayedCounts(counts)
+        }
+      } catch (err) {
+        console.error('Error fetching game counts:', err)
+      }
+    }
+
+    fetchGamesCounts()
+  }, [])
+
+  // Combine definitions with games played counts
+  const gameModes = gameModeDefinitions.map(mode => ({
+    ...mode,
+    gamesPlayed: gamesPlayedCounts[mode.id] || 0,
+  }))
+
   return (
     <div className="min-h-screen px-4 py-6 md:px-8 lg:px-12">
       {/* Header */}

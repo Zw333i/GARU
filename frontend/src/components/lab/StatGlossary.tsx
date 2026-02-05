@@ -1,7 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+
+const ITEMS_PER_PAGE = 6
 
 const statDefinitions = [
   // LEBRON & Modern Analytics
@@ -267,6 +269,7 @@ export function StatGlossary() {
   const [selectedCategory, setSelectedCategory] = useState('All')
   const [expandedStat, setExpandedStat] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
+  const [currentPage, setCurrentPage] = useState(1)
 
   const filteredStats = statDefinitions.filter(stat => {
     const matchesCategory = selectedCategory === 'All' || stat.category === selectedCategory
@@ -275,12 +278,32 @@ export function StatGlossary() {
     return matchesCategory && matchesSearch
   })
 
+  // Reset to page 1 when filter or search changes
+  const totalPages = Math.ceil(filteredStats.length / ITEMS_PER_PAGE)
+  const paginatedStats = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE
+    return filteredStats.slice(startIndex, startIndex + ITEMS_PER_PAGE)
+  }, [filteredStats, currentPage])
+
+  // Reset page when search/category changes
+  const handleCategoryChange = (category: string) => {
+    setSelectedCategory(category)
+    setCurrentPage(1)
+    setExpandedStat(null)
+  }
+
+  const handleSearchChange = (value: string) => {
+    setSearchQuery(value)
+    setCurrentPage(1)
+    setExpandedStat(null)
+  }
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.2 }}
-      className="glass rounded-2xl p-6"
+      className="glass rounded-2xl p-6 h-full min-h-[600px] flex flex-col"
     >
       <h2 className="text-xl font-display font-bold mb-4 flex items-center gap-2">
         <span className="text-2xl">📖</span>
@@ -291,7 +314,7 @@ export function StatGlossary() {
       <input
         type="text"
         value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
+        onChange={(e) => handleSearchChange(e.target.value)}
         placeholder="Search stats..."
         className="w-full px-4 py-2 mb-4 bg-gunmetal border border-surface rounded-lg text-ghost-white placeholder-muted focus:outline-none focus:border-electric-lime transition-colors text-sm"
       />
@@ -301,7 +324,7 @@ export function StatGlossary() {
         {categories.map((category) => (
           <button
             key={category}
-            onClick={() => setSelectedCategory(category)}
+            onClick={() => handleCategoryChange(category)}
             className={`px-3 py-1 rounded-full text-xs transition-colors ${
               selectedCategory === category
                 ? 'bg-electric-lime text-deep-void'
@@ -313,56 +336,107 @@ export function StatGlossary() {
         ))}
       </div>
 
-      {/* Stats List */}
-      <div className="space-y-2 max-h-[400px] overflow-y-auto">
-        {filteredStats.map((stat) => (
-          <div key={stat.abbr}>
-            <button
-              onClick={() => setExpandedStat(expandedStat === stat.abbr ? null : stat.abbr)}
-              className="w-full flex items-center justify-between p-3 bg-gunmetal rounded-lg hover:bg-surface transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <span className="text-electric-lime font-bold font-mono">{stat.abbr}</span>
-                <span className="text-sm">{stat.name}</span>
-              </div>
-              <svg
-                className={`w-4 h-4 text-muted transition-transform ${
-                  expandedStat === stat.abbr ? 'rotate-180' : ''
-                }`}
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
+      {/* Stats List - Fixed height for pagination */}
+      <div className="flex-1 flex flex-col">
+        <div className="space-y-2 min-h-[380px]">
+          {paginatedStats.map((stat) => (
+            <div key={stat.abbr}>
+              <button
+                onClick={() => setExpandedStat(expandedStat === stat.abbr ? null : stat.abbr)}
+                className="w-full flex items-center justify-between p-3 bg-gunmetal rounded-lg hover:bg-surface transition-colors"
               >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                <div className="flex items-center gap-3">
+                  <span className="text-electric-lime font-bold font-mono">{stat.abbr}</span>
+                  <span className="text-sm">{stat.name}</span>
+                </div>
+                <svg
+                  className={`w-4 h-4 text-muted transition-transform ${
+                    expandedStat === stat.abbr ? 'rotate-180' : ''
+                  }`}
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              <AnimatePresence>
+                {expandedStat === stat.abbr && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="p-4 bg-surface/50 rounded-b-lg text-sm space-y-2">
+                      <p className="text-ghost-white">{stat.description}</p>
+                      {stat.formula && (
+                        <p className="text-muted font-mono text-xs bg-gunmetal px-2 py-1 rounded">
+                          {stat.formula}
+                        </p>
+                      )}
+                      {stat.example && (
+                        <p className="text-electric-lime text-xs">
+                          💡 {stat.example}
+                        </p>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          ))}
+
+          {/* Empty state */}
+          {paginatedStats.length === 0 && (
+            <div className="flex items-center justify-center h-[380px] text-muted text-sm">
+              No stats found matching your search
+            </div>
+          )}
+        </div>
+
+        {/* Pagination Controls */}
+        <div className="mt-auto pt-4 border-t border-surface/30">
+          <div className="flex items-center justify-between">
+            <button
+              onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+              disabled={currentPage === 1}
+              className={`px-3 py-2 rounded-lg text-sm flex items-center gap-1 transition-colors ${
+                currentPage === 1
+                  ? 'bg-surface/30 text-muted cursor-not-allowed'
+                  : 'bg-gunmetal hover:bg-surface text-ghost-white'
+              }`}
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
+              Prev
             </button>
 
-            <AnimatePresence>
-              {expandedStat === stat.abbr && (
-                <motion.div
-                  initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
-                  exit={{ height: 0, opacity: 0 }}
-                  className="overflow-hidden"
-                >
-                  <div className="p-4 bg-surface/50 rounded-b-lg text-sm space-y-2">
-                    <p className="text-ghost-white">{stat.description}</p>
-                    {stat.formula && (
-                      <p className="text-muted font-mono text-xs bg-gunmetal px-2 py-1 rounded">
-                        {stat.formula}
-                      </p>
-                    )}
-                    {stat.example && (
-                      <p className="text-electric-lime text-xs">
-                        💡 {stat.example}
-                      </p>
-                    )}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            <span className="text-sm text-muted">
+              Page {currentPage} of {totalPages || 1}
+              <span className="hidden sm:inline text-xs ml-2">
+                ({filteredStats.length} stats)
+              </span>
+            </span>
+
+            <button
+              onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+              disabled={currentPage >= totalPages}
+              className={`px-3 py-2 rounded-lg text-sm flex items-center gap-1 transition-colors ${
+                currentPage >= totalPages
+                  ? 'bg-surface/30 text-muted cursor-not-allowed'
+                  : 'bg-gunmetal hover:bg-surface text-ghost-white'
+              }`}
+            >
+              Next
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </button>
           </div>
-        ))}
+        </div>
       </div>
     </motion.div>
   )

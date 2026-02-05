@@ -16,7 +16,9 @@ import {
 import { sounds } from '@/lib/sounds'
 import { useSettingsStore } from '@/store/settingsStore'
 import { useKeyboardControls } from '@/hooks/useKeyboardControls'
-import { getRandomPlayers, Player, supabase, saveGameScore } from '@/lib/supabase'
+import { supabase, saveGameScore } from '@/lib/supabase'
+import { BasketballLoader } from '@/components/ui/BasketballLoader'
+import { usePlayersStore, CachedPlayer } from '@/store/playersStore'
 
 // Stats to guess
 const statCategories = [
@@ -41,17 +43,17 @@ interface Round {
   difference: number | null
 }
 
-// Convert Supabase player to StatPlayer
-function toStatPlayer(player: Player): StatPlayer {
+// Convert cached player to StatPlayer
+function toStatPlayer(player: CachedPlayer): StatPlayer {
   return {
-    id: player.player_id,
-    name: player.full_name,
+    id: player.id,
+    name: player.name,
     stats: {
-      pts: player.season_stats?.pts || 0,
-      reb: player.season_stats?.reb || 0,
-      ast: player.season_stats?.ast || 0,
-      fg_pct: player.season_stats?.fg_pct || 0,
-      fg3_pct: player.season_stats?.fg3_pct || 0,
+      pts: player.ppg || 0,
+      reb: player.rpg || 0,
+      ast: player.apg || 0,
+      fg_pct: player.fg_pct || 0,
+      fg3_pct: player.fg3_pct || 0,
     }
   }
 }
@@ -71,6 +73,9 @@ const FALLBACK_PLAYERS: StatPlayer[] = [
 export default function StatAttackPage() {
   const { soundEnabled } = useSettingsStore()
   const inputRef = useRef<HTMLInputElement>(null)
+  
+  // Use session-cached players
+  const { players: cachedPlayers, isLoaded, isLoading: playersLoading, fetchPlayers, getRandomPlayers } = usePlayersStore()
   
   const [players, setPlayers] = useState<StatPlayer[]>(FALLBACK_PLAYERS)
   const [loading, setLoading] = useState(true)
@@ -107,22 +112,24 @@ export default function StatAttackPage() {
     }
   }
 
-  // Fetch players from Supabase
+  // Load players from session cache
   useEffect(() => {
-    async function fetchPlayers() {
-      try {
-        const data = await getRandomPlayers(20, 15)
-        if (data.length > 0) {
-          setPlayers(data.map(toStatPlayer))
-        }
-      } catch (err) {
-        console.error('Error fetching players:', err)
-      } finally {
-        setLoading(false)
-      }
+    if (!isLoaded && !playersLoading) {
+      fetchPlayers()
     }
-    fetchPlayers()
-  }, [])
+  }, [isLoaded, playersLoading, fetchPlayers])
+
+  // Convert cached players to game format
+  useEffect(() => {
+    if (isLoaded && cachedPlayers.length > 0) {
+      // Get random players from cache
+      const randomPlayers = getRandomPlayers(20, 10)
+      if (randomPlayers.length > 0) {
+        setPlayers(randomPlayers.map(toStatPlayer))
+      }
+      setLoading(false)
+    }
+  }, [isLoaded, cachedPlayers, getRandomPlayers])
 
   // Initialize first round when players load
   useEffect(() => {
@@ -236,14 +243,11 @@ export default function StatAttackPage() {
     return 'Way off!'
   }
 
-  // Loading state
+  // Loading state with basketball loader animation
   if (loading && !currentPlayer) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin w-12 h-12 border-4 border-electric-lime border-t-transparent rounded-full mx-auto mb-4"></div>
-          <p className="text-muted">Loading players...</p>
-        </div>
+        <BasketballLoader size="lg" text="Loading players..." />
       </div>
     )
   }
@@ -382,37 +386,50 @@ export default function StatAttackPage() {
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="max-w-lg mx-auto text-center py-10"
+          className="max-w-lg mx-auto glass rounded-2xl p-8 text-center"
         >
-          <div className="flex justify-center mb-4">
-            <TrophyIcon size={80} className="text-yellow-400" />
-          </div>
-          <h1 className="text-4xl font-display font-bold mb-2">Game Over!</h1>
-          <p className="text-muted mb-6">Here&apos;s how you did:</p>
+          <h2 className="text-3xl font-display font-bold mb-4">Game Complete!</h2>
+          <p className="text-5xl font-display font-bold text-electric-lime mb-2">
+            {score} points
+          </p>
+          <p className="text-muted mb-6">{correctCount}/{maxRounds} close guesses</p>
 
-          <div className="glass rounded-2xl p-6 mb-6">
-            <p className="text-5xl font-display font-bold text-electric-lime mb-2">
-              {score}
-            </p>
-            <p className="text-muted">Total Points</p>
+          {/* Stats Summary */}
+          <div className="grid grid-cols-2 gap-4 mb-6">
+            <div className="bg-surface rounded-xl p-4">
+              <p className="text-muted text-sm mb-1">Accuracy</p>
+              <p className="text-2xl font-bold text-electric-lime">
+                {maxRounds > 0 ? Math.round((correctCount / maxRounds) * 100) : 0}%
+              </p>
+            </div>
+            <div className="bg-surface rounded-xl p-4">
+              <p className="text-muted text-sm mb-1">Avg Time</p>
+              <p className="text-2xl font-bold">
+                {gameStartTime > 0 ? Math.round((Date.now() - gameStartTime) / 1000 / maxRounds) : 0}s
+              </p>
+            </div>
           </div>
+
+          <p className="text-muted mb-6">
+            {score >= 400 ? '🏆 Stat Master!' : 
+             score >= 250 ? '🌟 Great knowledge!' : 
+             score >= 100 ? '📚 Keep studying those stats!' : 
+             '💪 Practice makes perfect!'}
+          </p>
 
           {/* Round breakdown */}
-          <div className="space-y-3 mb-8">
+          <div className="space-y-2 mb-6 max-h-48 overflow-y-auto">
             {rounds.map((r, i) => (
-              <div key={i} className="glass rounded-lg p-3 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 flex items-center justify-center">{getAccuracyIcon(r.difference || 0)}</div>
-                  <div className="text-left">
-                    <p className="font-medium text-sm">{r.player.name}</p>
-                    <p className="text-muted text-xs">{r.stat.label}: {r.actualValue.toFixed(1)}</p>
-                  </div>
+              <div key={i} className="bg-surface rounded-lg p-3 flex items-center justify-between text-sm">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6">{getAccuracyIcon(r.difference || 0)}</div>
+                  <span className="font-medium">{r.player.name}</span>
                 </div>
-                <div className="text-right">
-                  <p className="text-sm">Guessed: {r.userGuess}</p>
-                  <p className={`text-xs ${r.difference! < 2 ? 'text-electric-lime' : 'text-muted'}`}>
-                    Off by {r.difference?.toFixed(1)}
-                  </p>
+                <div className="text-right text-xs">
+                  <span className="text-muted">{r.stat.label}: </span>
+                  <span className={r.difference! < 2 ? 'text-electric-lime' : 'text-muted'}>
+                    {r.userGuess} → {r.actualValue.toFixed(1)}
+                  </span>
                 </div>
               </div>
             ))}
@@ -429,7 +446,7 @@ export default function StatAttackPage() {
               href="/play"
               className="flex-1 py-3 bg-surface text-ghost-white font-bold rounded-xl text-center"
             >
-              More Games
+              Back to Games
             </Link>
           </div>
         </motion.div>

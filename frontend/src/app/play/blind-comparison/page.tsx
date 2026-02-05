@@ -9,6 +9,7 @@ import { useSettingsStore } from '@/store/settingsStore'
 import { useKeyboardControls } from '@/hooks/useKeyboardControls'
 import { useStarPlayers, FALLBACK_STAR_PLAYERS, GamePlayer } from '@/hooks/useGamePlayers'
 import { supabase, saveGameScore } from '@/lib/supabase'
+import { BasketballLoader } from '@/components/ui/BasketballLoader'
 
 // Silhouette image URL
 const SILHOUETTE_URL = 'https://th.bing.com/th/id/R.2855dc2b9d9f849e227dbe9f73642b27?rik=%2bcUVqCXHhW1S%2bA&riu=http%3a%2f%2fgetdrawings.com%2fimg%2fmale-silhouette-head-31.png&ehk=yxlY0knr%2bEmdM%2baGFVqzo0zaLgigbwObIl%2bXINZzWJ0%3d&risl=&pid=ImgRaw&r=0'
@@ -197,10 +198,7 @@ export default function BlindComparisonPage() {
   if (loading && supabasePlayers.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin w-12 h-12 border-4 border-electric-lime border-t-transparent rounded-full mx-auto mb-4"></div>
-          <p className="text-muted">Loading players from database...</p>
-        </div>
+        <BasketballLoader size="lg" text="Loading players..." />
       </div>
     )
   }
@@ -208,7 +206,7 @@ export default function BlindComparisonPage() {
   if (!currentComparison) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted">Loading matchups...</p>
+        <BasketballLoader size="md" text="Loading matchups..." />
       </div>
     )
   }
@@ -354,9 +352,31 @@ export default function BlindComparisonPage() {
             animate={{ opacity: 1, y: 0 }}
             className="glass rounded-2xl p-8 text-center"
           >
-            <h2 className="text-2xl font-display font-bold mb-2">Game Complete!</h2>
-            <p className="text-4xl font-display font-bold text-electric-lime mb-4">{score} points</p>
-            <p className="text-muted mb-6">{score >= 400 ? 'You know your stars!' : 'Keep studying those stats!'}</p>
+            <h2 className="text-3xl font-display font-bold mb-4">Game Complete!</h2>
+            <p className="text-5xl font-display font-bold text-electric-lime mb-2">{score} points</p>
+            <p className="text-muted mb-6">{correctCount}/5 correct</p>
+            
+            {/* Stats Summary */}
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="bg-surface rounded-xl p-4">
+                <p className="text-muted text-sm mb-1">Accuracy</p>
+                <p className="text-2xl font-bold text-electric-lime">
+                  {Math.round((correctCount / 5) * 100)}%
+                </p>
+              </div>
+              <div className="bg-surface rounded-xl p-4">
+                <p className="text-muted text-sm mb-1">Avg Time</p>
+                <p className="text-2xl font-bold">
+                  {gameStartTime > 0 ? Math.round((Date.now() - gameStartTime) / 1000 / 5) : 0}s
+                </p>
+              </div>
+            </div>
+
+            <p className="text-muted mb-6">
+              {score >= 400 ? '🏆 You know your stars!' : 
+               score >= 300 ? '🌟 Great eye for talent!' :
+               '📚 Keep studying those stats!'}
+            </p>
             <div className="flex gap-4 justify-center">
               <button
                 onClick={resetGame}
@@ -368,7 +388,7 @@ export default function BlindComparisonPage() {
                 href="/play"
                 className="px-6 py-3 bg-surface text-ghost-white font-bold rounded-xl"
               >
-                More Games
+                Back to Games
               </Link>
             </div>
           </motion.div>

@@ -2,155 +2,67 @@
 
 import { useState, useEffect } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { HexShotChart } from '@/components/lab/HexShotChart'
 import { StatGlossary } from '@/components/lab/StatGlossary'
 import { EfficiencyBubbleChart } from '@/components/lab/EfficiencyBubbleChart'
+import { ShotDistributionChart } from '@/components/lab/ShotDistributionChart'
 import { PlayerImage } from '@/components/ui/PlayerImage'
 import { LabIcon, SearchIcon } from '@/components/icons'
-import { supabase, incrementStatViews } from '@/lib/supabase'
+import { incrementStatViews } from '@/lib/supabase'
+import { BasketballLoader } from '@/components/ui/BasketballLoader'
+import { usePlayersStore, CachedPlayer } from '@/store/playersStore'
+import { useAuthStore } from '@/store/authStore'
 
-// Player type from database
-interface Player {
-  id: number
-  name: string
-  team: string
-  position: string
-  ppg: number
-  rpg: number
-  apg: number
-}
+// API URL from environment
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-// Fallback players - 2025-26 Season Stars + 2010s Legends
-const FALLBACK_PLAYERS: Player[] = [
-  // Current Stars (2025-26)
-  { id: 203999, name: 'Nikola Jokic', team: 'DEN', position: 'C', ppg: 27.5, rpg: 13.1, apg: 10.2 },
-  { id: 1629029, name: 'Luka Doncic', team: 'DAL', position: 'PG', ppg: 28.8, rpg: 8.3, apg: 7.8 },
-  { id: 203507, name: 'Giannis Antetokounmpo', team: 'MIL', position: 'PF', ppg: 31.5, rpg: 12.0, apg: 6.1 },
-  { id: 1628369, name: 'Jayson Tatum', team: 'BOS', position: 'SF', ppg: 27.8, rpg: 9.0, apg: 5.5 },
-  { id: 201939, name: 'Stephen Curry', team: 'GSW', position: 'PG', ppg: 25.8, rpg: 4.4, apg: 5.3 },
-  { id: 203954, name: 'Joel Embiid', team: 'PHI', position: 'C', ppg: 27.3, rpg: 8.6, apg: 3.8 },
-  { id: 2544, name: 'LeBron James', team: 'LAL', position: 'SF', ppg: 24.2, rpg: 7.1, apg: 8.0 },
-  { id: 201142, name: 'Kevin Durant', team: 'PHX', position: 'SF', ppg: 27.1, rpg: 6.6, apg: 4.3 },
-  { id: 1628983, name: 'Shai Gilgeous-Alexander', team: 'OKC', position: 'PG', ppg: 31.4, rpg: 5.5, apg: 6.0 },
-  { id: 1630162, name: 'Anthony Edwards', team: 'MIN', position: 'SG', ppg: 27.2, rpg: 5.8, apg: 4.5 },
-  { id: 1629630, name: 'Ja Morant', team: 'MEM', position: 'PG', ppg: 24.8, rpg: 5.4, apg: 8.5 },
-  { id: 1627759, name: 'Jaylen Brown', team: 'BOS', position: 'SG', ppg: 24.5, rpg: 5.8, apg: 4.0 },
-  { id: 202681, name: 'Kyrie Irving', team: 'DAL', position: 'PG', ppg: 25.6, rpg: 5.0, apg: 5.2 },
-  { id: 1641705, name: 'Victor Wembanyama', team: 'SAS', position: 'C', ppg: 21.4, rpg: 10.6, apg: 3.9 },
-  { id: 1628973, name: 'Jalen Brunson', team: 'NYK', position: 'PG', ppg: 26.3, rpg: 3.8, apg: 7.2 },
-  { id: 203081, name: 'Damian Lillard', team: 'MIL', position: 'PG', ppg: 25.1, rpg: 4.2, apg: 7.0 },
-  { id: 1626164, name: 'Devin Booker', team: 'PHX', position: 'SG', ppg: 27.5, rpg: 4.8, apg: 7.2 },
-  { id: 1629027, name: 'Trae Young', team: 'ATL', position: 'PG', ppg: 26.8, rpg: 3.0, apg: 11.2 },
-  { id: 1628378, name: 'Donovan Mitchell', team: 'CLE', position: 'SG', ppg: 27.5, rpg: 4.2, apg: 5.5 },
-  { id: 1630595, name: 'Cade Cunningham', team: 'DET', position: 'PG', ppg: 24.2, rpg: 4.8, apg: 8.0 },
-  
-  // Role Players (2025-26)
-  { id: 1628389, name: 'Bam Adebayo', team: 'MIA', position: 'C', ppg: 20.5, rpg: 10.8, apg: 5.2 },
-  { id: 1627734, name: 'Domantas Sabonis', team: 'SAC', position: 'C', ppg: 20.1, rpg: 14.2, apg: 8.5 },
-  { id: 1628386, name: 'Jarrett Allen', team: 'CLE', position: 'C', ppg: 17.2, rpg: 11.0, apg: 1.8 },
-  { id: 1628969, name: 'Mikal Bridges', team: 'NYK', position: 'SF', ppg: 19.6, rpg: 4.5, apg: 3.2 },
-  { id: 1628401, name: 'Derrick White', team: 'BOS', position: 'SG', ppg: 15.2, rpg: 4.2, apg: 5.2 },
-  { id: 1627826, name: 'Ivica Zubac', team: 'LAC', position: 'C', ppg: 11.7, rpg: 9.2, apg: 1.4 },
-  { id: 1628966, name: 'Luguentz Dort', team: 'OKC', position: 'SG', ppg: 10.8, rpg: 3.8, apg: 1.8 },
-  { id: 1629684, name: 'Franz Wagner', team: 'ORL', position: 'SF', ppg: 19.7, rpg: 5.3, apg: 3.7 },
-  { id: 1630578, name: 'Alperen Sengun', team: 'HOU', position: 'C', ppg: 19.0, rpg: 10.3, apg: 5.0 },
-  { id: 1630224, name: 'Jalen Green', team: 'HOU', position: 'SG', ppg: 22.1, rpg: 5.2, apg: 3.5 },
-  
-  // 2010s Legends (Retired/Late Career)
-  { id: 977, name: 'Kobe Bryant', team: 'LAL', position: 'SG', ppg: 25.0, rpg: 5.2, apg: 4.7 },
-  { id: 1495, name: 'Tim Duncan', team: 'SAS', position: 'PF', ppg: 19.0, rpg: 10.8, apg: 3.0 },
-  { id: 1718, name: 'Dirk Nowitzki', team: 'DAL', position: 'PF', ppg: 20.7, rpg: 7.5, apg: 2.4 },
-  { id: 2546, name: 'Carmelo Anthony', team: 'DEN', position: 'SF', ppg: 22.5, rpg: 6.2, apg: 2.7 },
-  { id: 1717, name: 'Pau Gasol', team: 'LAL', position: 'C', ppg: 17.0, rpg: 9.2, apg: 3.2 },
-  { id: 101106, name: 'Tony Parker', team: 'SAS', position: 'PG', ppg: 15.5, rpg: 2.7, apg: 5.6 },
-  { id: 1884, name: 'Manu Ginobili', team: 'SAS', position: 'SG', ppg: 13.3, rpg: 3.5, apg: 3.8 },
-  { id: 2548, name: 'Dwyane Wade', team: 'MIA', position: 'SG', ppg: 22.0, rpg: 4.7, apg: 5.4 },
-  { id: 101108, name: 'Chris Paul', team: 'SAS', position: 'PG', ppg: 8.5, rpg: 3.5, apg: 7.2 },
-  { id: 201565, name: 'Derrick Rose', team: 'MEM', position: 'PG', ppg: 7.5, rpg: 1.8, apg: 2.0 },
-  { id: 201566, name: 'Russell Westbrook', team: 'DEN', position: 'PG', ppg: 10.0, rpg: 5.5, apg: 6.5 },
-  { id: 200765, name: 'Rajon Rondo', team: 'BOS', position: 'PG', ppg: 10.0, rpg: 4.5, apg: 8.0 },
-  { id: 2730, name: 'Dwight Howard', team: 'ORL', position: 'C', ppg: 17.4, rpg: 12.4, apg: 1.4 },
-  { id: 2037, name: 'Vince Carter', team: 'TOR', position: 'SG', ppg: 16.7, rpg: 4.3, apg: 3.1 },
-  { id: 1891, name: 'Ray Allen', team: 'MIA', position: 'SG', ppg: 18.9, rpg: 4.1, apg: 3.4 },
-  { id: 101113, name: 'Paul Pierce', team: 'BOS', position: 'SF', ppg: 19.7, rpg: 5.6, apg: 3.5 },
-  { id: 708, name: 'Kevin Garnett', team: 'MIN', position: 'PF', ppg: 17.8, rpg: 10.0, apg: 3.7 },
-  { id: 947, name: 'Shaquille ONeal', team: 'LAL', position: 'C', ppg: 23.7, rpg: 10.9, apg: 2.5 },
-  { id: 959, name: 'Steve Nash', team: 'PHX', position: 'PG', ppg: 14.3, rpg: 3.0, apg: 8.5 },
-  { id: 1897, name: 'Jason Kidd', team: 'DAL', position: 'PG', ppg: 12.6, rpg: 6.3, apg: 8.7 },
-  { id: 1497, name: 'Tracy McGrady', team: 'ORL', position: 'SG', ppg: 19.6, rpg: 5.6, apg: 4.4 },
-  { id: 1899, name: 'Allen Iverson', team: 'PHI', position: 'PG', ppg: 26.7, rpg: 3.7, apg: 6.2 },
-  { id: 1740, name: 'Gary Payton', team: 'SEA', position: 'PG', ppg: 16.3, rpg: 3.9, apg: 6.7 },
-  { id: 200746, name: 'LaMarcus Aldridge', team: 'SAS', position: 'PF', ppg: 19.4, rpg: 8.2, apg: 2.0 },
-  { id: 200794, name: 'Marc Gasol', team: 'MEM', position: 'C', ppg: 14.0, rpg: 7.7, apg: 3.4 },
-]
+// Player type for this page (alias to CachedPlayer)
+type Player = CachedPlayer
 
 export default function LabPage() {
   const searchParams = useSearchParams()
   const playerIdParam = searchParams.get('player')
   
-  const [players, setPlayers] = useState<Player[]>([])
-  const [loading, setLoading] = useState(true)
+  // Use session-cached players store instead of local fetch
+  const { players, isLoaded, isLoading: playersLoading, fetchPlayers, searchPlayers } = usePlayersStore()
+  
+  // Use centralized auth store
+  const { user } = useAuthStore()
+  
   const [query, setQuery] = useState('')
   const [showResults, setShowResults] = useState(false)
   const [selectedPlayer, setSelectedPlayer] = useState<Player | null>(null)
   const [heatmapLoading, setHeatmapLoading] = useState(false)
   const [heatmapUrl, setHeatmapUrl] = useState<string | null>(null)
   const [heatmapError, setHeatmapError] = useState<string | null>(null)
+  const [showFullscreen, setShowFullscreen] = useState(false)
 
-  // Fetch players from Supabase
+  // Ensure players are loaded (uses session cache)
   useEffect(() => {
-    const fetchPlayers = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('cached_players')
-          .select('player_id, full_name, team_abbreviation, position, season_stats')
-          .order('season_stats->pts', { ascending: false })
-          .limit(500)
-        
-        if (error) {
-          // Silently fall back if table doesn't exist or connection fails
-          console.warn('Using fallback player data (database unavailable)')
-          setPlayers(FALLBACK_PLAYERS)
-          return
-        }
-        
-        if (data && data.length > 0) {
-          interface CachedPlayer {
-            player_id: number
-            full_name: string
-            team_abbreviation: string | null
-            position: string | null
-            season_stats: {
-              pts?: number
-              reb?: number
-              ast?: number
-            } | null
-          }
-          const mappedPlayers: Player[] = (data as CachedPlayer[]).map(p => ({
-            id: p.player_id,
-            name: p.full_name,
-            team: p.team_abbreviation || '',
-            position: p.position || 'N/A',
-            ppg: p.season_stats?.pts || 0,
-            rpg: p.season_stats?.reb || 0,
-            apg: p.season_stats?.ast || 0
-          }))
-          setPlayers(mappedPlayers)
-        } else {
-          setPlayers(FALLBACK_PLAYERS)
-        }
-      } catch {
-        // Network error or other issue - use fallback silently
-        setPlayers(FALLBACK_PLAYERS)
-      } finally {
-        setLoading(false)
-      }
+    if (!isLoaded && !playersLoading) {
+      fetchPlayers()
     }
-    
-    fetchPlayers()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [isLoaded, playersLoading, fetchPlayers])
+
+  // Download heatmap image
+  const handleDownload = async () => {
+    if (!heatmapUrl || !selectedPlayer) return
+    try {
+      const response = await fetch(heatmapUrl)
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${selectedPlayer.name.replace(/\s+/g, '_')}_heatmap.png`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+    } catch (err) {
+      console.error('Download failed:', err)
+    }
+  }
 
   // Handle URL parameter to auto-select player
   useEffect(() => {
@@ -164,9 +76,10 @@ export default function LabPage() {
     }
   }, [playerIdParam, players])
 
-  const filteredPlayers = players.filter(p => 
-    p.name.toLowerCase().includes(query.toLowerCase())
-  )
+  // Require minimum 2 characters to prevent single-letter matches
+  const filteredPlayers = query.length >= 2 
+    ? searchPlayers(query)
+    : []
 
   // Auto-fetch heatmap when player is selected
   useEffect(() => {
@@ -183,8 +96,15 @@ export default function LabPage() {
       setHeatmapError(null)
       
       try {
-        // Try to fetch from Python backend
-        const response = await fetch(`http://localhost:8000/api/stats/heatmap/${selectedPlayer.id}`)
+        // Add cache-busting timestamp to prevent browser caching
+        const timestamp = Date.now()
+        const response = await fetch(`${API_URL}/api/stats/heatmap/${selectedPlayer.id}?t=${timestamp}`, {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          }
+        })
         
         if (!response.ok) {
           throw new Error('Heatmap generation failed')
@@ -195,7 +115,7 @@ export default function LabPage() {
         setHeatmapUrl(currentUrl)
       } catch {
         // Backend not running - show placeholder
-        setHeatmapError('Python backend not running. Start with: python backend/main.py')
+        setHeatmapError('Backend not available. Start with: cd backend && python main.py')
         setHeatmapUrl(null)
       } finally {
         setHeatmapLoading(false)
@@ -217,9 +137,8 @@ export default function LabPage() {
     setQuery(player.name)
     setShowResults(false)
     
-    // Track stat view for achievement
+    // Track stat view for achievement using cached user
     try {
-      const { data: { user } } = await supabase.auth.getUser()
       if (user) {
         await incrementStatViews(user.id)
       }
@@ -228,8 +147,8 @@ export default function LabPage() {
     }
   }
 
-  // Loading state
-  if (loading) {
+  // Loading state with ball bouncing animation
+  if (playersLoading && !isLoaded) {
     return (
       <div className="min-h-screen px-4 py-6 md:px-8 lg:px-12">
         <section className="mb-8">
@@ -237,10 +156,58 @@ export default function LabPage() {
             <LabIcon className="text-electric-lime" size={36} />
             The Lab
           </h1>
-          <p className="text-muted text-lg">Loading players...</p>
+          <p className="text-muted text-lg">Loading players from cache...</p>
         </section>
         <div className="flex justify-center py-12">
-          <div className="animate-spin w-12 h-12 border-4 border-electric-lime border-t-transparent rounded-full"></div>
+          <div className="relative w-20 h-20 mx-auto">
+            {/* Basketball bouncing animation */}
+            <motion.div
+              animate={{ 
+                y: [0, -20, 0],
+                scale: [1, 0.9, 1],
+              }}
+              transition={{ 
+                duration: 0.6, 
+                repeat: Infinity,
+                ease: 'easeInOut'
+              }}
+              className="text-6xl"
+            >
+              🏀
+            </motion.div>
+            {/* Shadow */}
+            <motion.div
+              animate={{ 
+                scale: [1, 0.7, 1],
+                opacity: [0.3, 0.5, 0.3],
+              }}
+              transition={{ 
+                duration: 0.6, 
+                repeat: Infinity,
+                ease: 'easeInOut'
+              }}
+              className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-2 bg-electric-lime/30 rounded-full blur-sm"
+            />
+          </div>
+        </div>
+        {/* Skeleton loading placeholders */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            <div className="glass rounded-2xl p-6 animate-pulse">
+              <div className="h-6 bg-surface rounded w-1/3 mb-4"></div>
+              <div className="h-64 bg-surface rounded"></div>
+            </div>
+          </div>
+          <div>
+            <div className="glass rounded-2xl p-6 animate-pulse">
+              <div className="h-6 bg-surface rounded w-1/2 mb-4"></div>
+              <div className="space-y-3">
+                <div className="h-4 bg-surface rounded"></div>
+                <div className="h-4 bg-surface rounded w-5/6"></div>
+                <div className="h-4 bg-surface rounded w-4/6"></div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -270,10 +237,10 @@ export default function LabPage() {
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value)
-                setShowResults(e.target.value.length > 0)
+                setShowResults(e.target.value.length >= 2)
               }}
-              onFocus={() => query.length > 0 && setShowResults(true)}
-              placeholder="Search for a player..."
+              onFocus={() => query.length >= 2 && setShowResults(true)}
+              placeholder="Search for a player (min 2 chars)..."
               className="w-full px-4 py-3 pl-12 bg-gunmetal border border-surface rounded-xl text-ghost-white placeholder-muted focus:outline-none focus:border-electric-lime transition-colors"
             />
             <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" size={20} />
@@ -349,85 +316,165 @@ export default function LabPage() {
       </section>
 
       {/* Main Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
         {/* Shot Chart - passes selected player */}
-        <div className="lg:col-span-2">
-          <HexShotChart selectedPlayer={selectedPlayer} />
+        <div className="lg:col-span-2 flex">
+          <div className="w-full">
+            <HexShotChart selectedPlayer={selectedPlayer} />
+          </div>
         </div>
 
-        {/* Stat Glossary */}
-        <div>
+        {/* Stat Glossary - matches Shot Chart height */}
+        <div className="flex">
           <StatGlossary />
         </div>
       </div>
 
-      {/* Efficiency Bubble Chart - Full Width */}
+      {/* The Box + Heatmap - Side by Side */}
       <section className="mt-8">
-        <EfficiencyBubbleChart 
-          players={players}
-          selectedPlayerId={selectedPlayer?.id}
-          onPlayerClick={(player) => {
-            // Find the full player data from our players array
-            const fullPlayer = players.find(p => p.id === player.id)
-            if (fullPlayer) handleSelect(fullPlayer)
-          }}
-        />
-      </section>
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 items-stretch">
+          {/* The Box (Efficiency Bubble Chart) */}
+          <EfficiencyBubbleChart 
+            players={players}
+            selectedPlayerId={selectedPlayer?.id}
+            onPlayerClick={(player) => {
+              // Find the full player data from our players array
+              const fullPlayer = players.find(p => p.id === player.id)
+              if (fullPlayer) handleSelect(fullPlayer)
+            }}
+          />
 
-      {/* Heatmap Section */}
-      {selectedPlayer && (
-        <section className="mt-8">
-          <div className="glass rounded-2xl p-6">
-            <h2 className="text-xl font-display font-bold mb-4">
-              Scoring Density Heatmap
+          {/* Heatmap - Side by side with The Box */}
+          <div className="glass rounded-2xl p-6 h-full flex flex-col">
+            <h2 className="text-xl font-display font-bold mb-4 flex items-center gap-2">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-hot-pink">
+                <path d="M12 2C8 6 4 10 4 14a8 8 0 1016 0c0-4-4-8-8-12z"/>
+              </svg>
+              Scoring Density
+              {selectedPlayer && (
+                <span className="text-muted font-normal text-sm ml-2">
+                  - {selectedPlayer.name}
+                </span>
+              )}
             </h2>
-            <p className="text-muted text-sm mb-4">
-              KDE visualization showing {selectedPlayer.name}&apos;s shot distribution relative to league averages.
-            </p>
             
-            {/* Heatmap Display - Auto-generated */}
-            <div className="bg-gunmetal rounded-xl p-4">
-              {heatmapLoading && (
-                <div className="w-full h-64 flex items-center justify-center">
-                  <div className="text-center">
-                    <div className="animate-spin w-12 h-12 border-4 border-electric-lime border-t-transparent rounded-full mx-auto mb-3"></div>
-                    <p className="text-muted">Generating heatmap for {selectedPlayer.name}...</p>
+            {/* Heatmap + Shot Distribution - Flex to fill container */}
+            <div className="flex-1 flex flex-col">
+              {/* Heatmap Display */}
+              <div className="bg-gunmetal rounded-xl p-4 flex-1 min-h-[350px] flex items-center justify-center">
+                {!selectedPlayer && (
+                  <div className="text-center text-muted">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="mx-auto mb-3 opacity-50">
+                      <path d="M12 2C8 6 4 10 4 14a8 8 0 1016 0c0-4-4-8-8-12z"/>
+                    </svg>
+                    <p className="text-sm">Select a player from The Box</p>
+                    <p className="text-xs mt-1">to view their shot heatmap</p>
                   </div>
+                )}
+
+              {selectedPlayer && heatmapLoading && (
+                <div className="text-center">
+                  <BasketballLoader />
+                  <p className="text-muted mt-3">Generating heatmap...</p>
                 </div>
               )}
               
-              {heatmapUrl && !heatmapLoading && (
+              {selectedPlayer && heatmapUrl && !heatmapLoading && (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="flex justify-center"
+                  className="flex flex-col items-center w-full"
                 >
                   <img 
                     src={heatmapUrl} 
                     alt={`${selectedPlayer.name} Shot Heatmap`}
-                    className="max-w-full h-auto rounded-lg"
+                    className="max-w-full h-auto rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                    style={{ maxHeight: '380px' }}
+                    onClick={() => setShowFullscreen(true)}
+                    title="Click to view fullscreen"
                   />
+                  <p className="text-xs text-muted mt-2">Click image to view fullscreen</p>
                 </motion.div>
               )}
               
-              {heatmapError && !heatmapLoading && (
-                <div className="w-full h-64 flex items-center justify-center">
-                  <div className="text-center max-w-md">
-                    <LabIcon className="text-muted mx-auto mb-3" size={48} />
-                    <p className="text-muted mb-2">Advanced heatmap visualization</p>
-                    <p className="text-xs text-warning bg-surface/50 px-4 py-2 rounded-lg">
-                      {heatmapError}
-                    </p>
-                    <p className="text-xs text-muted mt-3">
-                      Endpoint: <code className="bg-surface px-2 py-1 rounded">/api/stats/heatmap/{selectedPlayer.id}</code>
-                    </p>
-                  </div>
+              {selectedPlayer && heatmapError && !heatmapLoading && (
+                <div className="text-center max-w-md">
+                  <LabIcon className="text-muted mx-auto mb-3" size={48} />
+                  <p className="text-muted mb-2">Backend required for heatmap</p>
+                  <p className="text-xs text-amber-400 bg-surface/50 px-4 py-2 rounded-lg">
+                    Run: cd backend &amp;&amp; python main.py
+                  </p>
+                </div>
+              )}
+              </div>
+
+              {/* Shot Distribution Bar Chart - Below Heatmap */}
+              {selectedPlayer && (
+                <div className="mt-4">
+                  <ShotDistributionChart selectedPlayer={selectedPlayer} />
                 </div>
               )}
             </div>
           </div>
-        </section>
-      )}
+        </div>
+      </section>
+
+      {/* Fullscreen Heatmap Modal */}
+      <AnimatePresence>
+        {showFullscreen && heatmapUrl && selectedPlayer && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4"
+            onClick={() => setShowFullscreen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="relative max-w-5xl w-full"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header with player name and close button */}
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-white">{selectedPlayer.name} - Shot Heatmap</h2>
+                <button
+                  onClick={() => setShowFullscreen(false)}
+                  className="text-white hover:text-electric-lime transition-colors p-2"
+                >
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M18 6L6 18M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              
+              {/* Fullscreen Image */}
+              <img 
+                src={heatmapUrl} 
+                alt={`${selectedPlayer.name} Shot Heatmap`}
+                className="w-full h-auto rounded-lg"
+              />
+              
+              {/* Download Button */}
+              <div className="flex justify-center mt-4">
+                <button
+                  onClick={handleDownload}
+                  className="flex items-center gap-2 px-6 py-3 bg-electric-lime text-gunmetal font-bold rounded-lg hover:bg-electric-lime/90 transition-colors"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
+                  </svg>
+                  Download Heatmap
+                </button>
+              </div>
+              
+              {/* Click outside hint */}
+              <p className="text-center text-muted text-sm mt-4">Click outside or press the X to close</p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

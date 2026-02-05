@@ -61,13 +61,17 @@ def fetch_all_players_live() -> List[Dict]:
     """
     Fetch ALL active NBA players for 2025-26 season using LeagueDashPlayerStats
     This is the most efficient way - 1 API call for ~450 players
+    Now also fetches real positions from PlayerIndex
     """
     try:
-        from nba_api.stats.endpoints import LeagueDashPlayerStats
+        from nba_api.stats.endpoints import LeagueDashPlayerStats, PlayerIndex
         from nba_api.stats.static import players as static_players
         import time
         
         print(f"🏀 Fetching all players for {CURRENT_SEASON} season...")
+        
+        # First fetch real positions from PlayerIndex
+        position_map = fetch_player_positions()
         
         # Add delay to avoid rate limiting
         time.sleep(0.6)
@@ -114,11 +118,19 @@ def fetch_all_players_live() -> List[Dict]:
                 50 + pts * 1.5 + reb * 0.8 + ast * 1.2 + stl * 2 + blk * 2 + fg_pct * 20
             )))
             
+            # Get player stats for position inference
+            stats = {"pts": pts, "reb": reb, "ast": ast, "stl": stl, "blk": blk}
+            
+            # Get real position from PlayerIndex, normalize it
+            player_id = int(row["PLAYER_ID"])
+            raw_position = position_map.get(player_id, "")
+            position = normalize_position(raw_position, stats)
+            
             player = {
-                "id": int(row["PLAYER_ID"]),
+                "id": player_id,
                 "name": row["PLAYER_NAME"],
                 "team": team_abbr_map.get(row.get("TEAM_ID"), row.get("TEAM_ABBREVIATION", "FA")),
-                "position": infer_position(row),
+                "position": position,
                 "age": int(row.get("AGE", 0)) if row.get("AGE") else None,
                 "gp": int(row.get("GP", 0)),
                 "mpg": round(float(row.get("MIN", 0) or 0), 1),
@@ -153,39 +165,135 @@ def fetch_all_players_live() -> List[Dict]:
         return []
 
 
-def infer_position(row) -> str:
-    """Infer position from stats (NBA API doesn't always provide position)"""
-    # Try to get from static players data
+def fetch_player_positions() -> Dict[int, str]:
+    """
+    Fetch real position data from PlayerIndex endpoint.
+    Returns a dict mapping player_id -> position
+    """
     try:
-        from nba_api.stats.static import players as static_players
-        player_info = static_players.find_player_by_id(row["PLAYER_ID"])
-        if player_info:
-            # Static data doesn't have position, so we infer
-            pass
-    except:
-        pass
+        from nba_api.stats.endpoints import PlayerIndex
+        import time
+        
+        print("📋 Fetching player positions from PlayerIndex...")
+        time.sleep(0.6)  # Rate limiting
+        
+        player_index = PlayerIndex(season=CURRENT_SEASON)
+        df = player_index.get_data_frames()[0]
+        
+        positions = {}
+        for _, row in df.iterrows():
+            player_id = int(row["PERSON_ID"])
+            position = row.get("POSITION", "")
+            positions[player_id] = position
+        
+        print(f"✅ Got positions for {len(positions)} players")
+        return positions
+    except Exception as e:
+        print(f"⚠️ Error fetching positions: {e}")
+        return {}
+
+
+def normalize_position(pos: str, stats: dict = None) -> str:
+    """
+    Convert NBA API position format to standard 5-position format.
+    NBA API uses: G, F, C, G-F, F-G, C-F, F-C, etc.
+    We want: PG, SG, SF, PF, C
+    """
+    if not pos:
+        return infer_position_from_stats(stats) if stats else "SF"
     
-    # Infer from stats
-    pts = row.get("PTS", 0) or 0
-    reb = row.get("REB", 0) or 0
-    ast = row.get("AST", 0) or 0
-    blk = row.get("BLK", 0) or 0
+    pos = pos.upper().strip()
+    
+    # Direct mappings for single positions
+    if pos == "C":
+        return "C"
+    
+    # For guards, use stats to differentiate PG vs SG
+    if pos == "G":
+        if stats:
+            ast = stats.get("ast", 0) or 0
+            pts = stats.get("pts", 0) or 0
+            if ast > 4 or (ast > 2 and pts < 15):
+                return "PG"
+        return "SG"
+    
+    # For forwards, use stats to differentiate SF vs PF
+    if pos == "F":
+        if stats:
+            reb = stats.get("reb", 0) or 0
+            blk = stats.get("blk", 0) or 0
+            if reb > 6 or blk > 1:
+                return "PF"
+        return "SF"
+    
+    # Combo positions - use first position as primary
+    if "-" in pos:
+        primary, secondary = pos.split("-")
+        
+        if primary == "C":
+            return "C"
+        if primary == "F" and secondary == "C":
+            return "PF"
+        if ("F" in pos and "G" in pos):
+            if stats:
+                ast = stats.get("ast", 0) or 0
+                reb = stats.get("reb", 0) or 0
+                if ast > reb:
+                    return "SG"
+            return "SF"
+        if primary == "G":
+            return "SG"
+        if primary == "F":
+            return "SF"
+    
+    return infer_position_from_stats(stats) if stats else "SF"
+
+
+def infer_position_from_stats(stats: dict) -> str:
+    """Fallback position inference from stats"""
+    if not stats:
+        return "SF"
+    
+    pts = stats.get("pts", 0) or 0
+    reb = stats.get("reb", 0) or 0
+    ast = stats.get("ast", 0) or 0
+    blk = stats.get("blk", 0) or 0
     
     if reb > 8 and blk > 1:
         return "C"
-    elif reb > 6 and pts > 15:
+    if reb > 10:
+        return "C"
+    if reb > 6:
         return "PF"
-    elif ast > 5:
+    if ast > 5:
         return "PG"
-    elif pts > 15 and reb < 5:
+    if ast > 3 and pts < 18:
+        return "PG"
+    if pts > 15 and reb < 5 and ast < 5:
         return "SG"
-    else:
-        return "SF"
+    
+    return "SF"
+
+
+def get_expired_cache() -> Optional[List[Dict]]:
+    """Get cached players even if expired (fallback)"""
+    try:
+        if not CACHE_FILE.exists():
+            return None
+        
+        with open(CACHE_FILE, "r") as f:
+            data = json.load(f)
+        
+        return data.get("players", [])
+    except Exception as e:
+        print(f"Fallback cache read error: {e}")
+        return None
 
 
 def get_all_players(force_refresh: bool = False) -> List[Dict]:
     """
     Get all players - from cache or fresh from API
+    With fallback to expired cache if API fails
     """
     if not force_refresh:
         cached = get_cached_players()
@@ -193,7 +301,23 @@ def get_all_players(force_refresh: bool = False) -> List[Dict]:
             print(f"📦 Using cached data ({len(cached)} players)")
             return cached
     
-    return fetch_all_players_live()
+    # Try to fetch fresh data
+    try:
+        fresh_data = fetch_all_players_live()
+        if fresh_data:
+            return fresh_data
+    except Exception as e:
+        print(f"⚠️ API fetch failed: {e}")
+    
+    # Fallback to expired cache
+    expired_cache = get_expired_cache()
+    if expired_cache:
+        print(f"📦 Using expired cache as fallback ({len(expired_cache)} players)")
+        return expired_cache
+    
+    # Last resort: return empty list
+    print("❌ No data available - cache and API both failed")
+    return []
 
 
 def get_players_by_team(team: str) -> List[Dict]:

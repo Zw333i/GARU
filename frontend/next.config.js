@@ -15,8 +15,10 @@ const nextConfig = {
     ],
   },
   experimental: {
-    serverActions: true,
+  serverActions: {
+    bodySizeLimit: '2mb'  // Object format required in Next.js 16+
   },
+},
 }
 
 module.exports = nextConfig

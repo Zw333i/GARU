@@ -21,7 +21,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from dotenv import load_dotenv
-from nba_api.stats.endpoints import LeagueDashPlayerStats
+from nba_api.stats.endpoints import LeagueDashPlayerStats, PlayerIndex
 from supabase import create_client, Client
 
 # Load environment variables
@@ -48,31 +48,143 @@ TEAM_ABBR_MAP = {
 }
 
 
-def infer_position(row) -> str:
-    """Infer position from stats"""
-    pts = row.get("PTS", 0) or 0
-    reb = row.get("REB", 0) or 0
-    ast = row.get("AST", 0) or 0
-    blk = row.get("BLK", 0) or 0
+def normalize_position(pos: str, stats: dict = None) -> str:
+    """
+    Convert NBA API position format to standard 5-position format.
+    NBA API uses: G, F, C, G-F, F-G, C-F, F-C, etc.
+    We want: PG, SG, SF, PF, C
+    """
+    if not pos:
+        return infer_position_from_stats(stats) if stats else "SF"
     
+    pos = pos.upper().strip()
+    
+    # Direct mappings for single positions
+    if pos == "C":
+        return "C"
+    
+    # For guards, use stats to differentiate PG vs SG
+    if pos == "G":
+        if stats:
+            ast = stats.get("ast", 0) or 0
+            pts = stats.get("pts", 0) or 0
+            # PGs typically have higher assist rates
+            if ast > 4 or (ast > 2 and pts < 15):
+                return "PG"
+        return "SG"
+    
+    # For forwards, use stats to differentiate SF vs PF
+    if pos == "F":
+        if stats:
+            reb = stats.get("reb", 0) or 0
+            blk = stats.get("blk", 0) or 0
+            pts = stats.get("pts", 0) or 0
+            # PFs typically have more rebounds/blocks
+            if reb > 6 or blk > 1:
+                return "PF"
+        return "SF"
+    
+    # Combo positions - use first position as primary
+    if "-" in pos:
+        primary, secondary = pos.split("-")
+        
+        # C-F = Center who can play forward
+        if primary == "C":
+            return "C"
+        
+        # F-C = Forward/Center (power forward)
+        if primary == "F" and secondary == "C":
+            return "PF"
+        
+        # F-G or G-F = Swingman
+        if ("F" in pos and "G" in pos):
+            if stats:
+                ast = stats.get("ast", 0) or 0
+                reb = stats.get("reb", 0) or 0
+                if ast > reb:
+                    return "SG"
+            return "SF"
+        
+        # Default: use primary position
+        if primary == "G":
+            return "SG"
+        if primary == "F":
+            return "SF"
+    
+    # Fallback
+    return infer_position_from_stats(stats) if stats else "SF"
+
+
+def infer_position_from_stats(stats: dict) -> str:
+    """Fallback position inference from stats when position data unavailable"""
+    if not stats:
+        return "SF"
+    
+    pts = stats.get("pts", 0) or 0
+    reb = stats.get("reb", 0) or 0
+    ast = stats.get("ast", 0) or 0
+    blk = stats.get("blk", 0) or 0
+    
+    # Centers: high rebounds and blocks
     if reb > 8 and blk > 1:
         return "C"
-    elif reb > 6 and pts > 15:
+    if reb > 10:
+        return "C"
+    
+    # Power Forwards: good rebounders
+    if reb > 6:
         return "PF"
-    elif ast > 5:
+    
+    # Point Guards: high assists
+    if ast > 5:
         return "PG"
-    elif pts > 15 and reb < 5:
+    if ast > 3 and pts < 18:
+        return "PG"
+    
+    # Shooting Guards: scorers with low rebounds
+    if pts > 15 and reb < 5 and ast < 5:
         return "SG"
-    else:
-        return "SF"
+    
+    # Small Forwards: default
+    return "SF"
+
+
+def fetch_player_positions() -> Dict[int, str]:
+    """
+    Fetch real position data from PlayerIndex endpoint.
+    Returns a dict mapping player_id -> position
+    """
+    print("📋 Fetching player positions from PlayerIndex...")
+    
+    time.sleep(0.6)  # Rate limiting
+    
+    try:
+        player_index = PlayerIndex(season=CURRENT_SEASON)
+        df = player_index.get_data_frames()[0]
+        
+        positions = {}
+        for _, row in df.iterrows():
+            player_id = int(row["PERSON_ID"])
+            position = row.get("POSITION", "")
+            positions[player_id] = position
+        
+        print(f"✅ Got positions for {len(positions)} players")
+        return positions
+    except Exception as e:
+        print(f"⚠️ Error fetching positions: {e}")
+        return {}
 
 
 def fetch_all_players() -> List[Dict]:
     """
     Fetch ALL active NBA players using LeagueDashPlayerStats
     Single API call - very efficient (~0.5s for 500+ players)
+    Now also fetches real positions from PlayerIndex
     """
     print(f"🏀 Fetching all players for {CURRENT_SEASON} season...")
+    
+    # First fetch real positions from PlayerIndex
+    position_map = fetch_player_positions()
     
     # Add delay to avoid rate limiting
     time.sleep(0.6)
@@ -101,13 +213,27 @@ def fetch_all_players() -> List[Dict]:
             50 + pts * 1.5 + reb * 0.8 + ast * 1.2 + stl * 2 + blk * 2 + fg_pct * 20
         )))
         
+        # Get player stats for position inference
+        stats = {
+            "pts": pts,
+            "reb": reb,
+            "ast": ast,
+            "stl": stl,
+            "blk": blk,
+        }
+        
+        # Get real position from PlayerIndex, normalize it
+        player_id = int(row["PLAYER_ID"])
+        raw_position = position_map.get(player_id, "")
+        position = normalize_position(raw_position, stats)
+        
         player = {
-            "player_id": int(row["PLAYER_ID"]),
+            "player_id": player_id,
             "full_name": row["PLAYER_NAME"],
             "team_id": int(row.get("TEAM_ID", 0)),
             "team_abbreviation": TEAM_ABBR_MAP.get(row.get("TEAM_ID"), row.get("TEAM_ABBREVIATION", "FA")),
             "is_active": True,
-            "position": infer_position(row),
+            "position": position,
             "season_stats": {
                 "season": CURRENT_SEASON,
                 "gp": int(row.get("GP", 0)),

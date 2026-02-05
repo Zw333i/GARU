@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { sounds } from '@/lib/sounds'
@@ -54,8 +54,8 @@ const journeys = [
   // Damian Lillard: Drafted POR 2012, MIL 2023-present
   { teams: ['POR', 'MIL'], answer: 'Damian Lillard', id: 203081 },
   
-  // Bradley Beal: Drafted WAS 2012, PHX 2023-present
-  { teams: ['WAS', 'PHX'], answer: 'Bradley Beal', id: 203078 },
+  // Bradley Beal: Drafted WAS 2012, PHX 2023, LAC 2025-present
+  { teams: ['WAS', 'PHX', 'LAC'], answer: 'Bradley Beal', id: 203078 },
   
   // Jrue Holiday: Drafted PHI 2009, NOP 2013, MIL 2020, BOS 2023, POR 2025-present
   { teams: ['PHI', 'NOP', 'MIL', 'BOS', 'POR'], answer: 'Jrue Holiday', id: 201950 },
@@ -135,9 +135,16 @@ const journeys = [
   { teams: ['SEA', 'MIL', 'LAL', 'BOS', 'MIA'], answer: 'Gary Payton', id: 136 },
 ]
 
-// Helper to check if guess matches player
+// Filter journeys to only include players with 3 or more teams
+const validJourneys = journeys.filter(j => j.teams.length >= 3)
+
+// Helper to check if guess matches player - require minimum 2 characters
 const checkGuess = (guess: string, playerName: string): boolean => {
   const guessLower = guess.toLowerCase().trim()
+  
+  // Require at least 2 characters for a valid guess
+  if (guessLower.length < 2) return false
+  
   const nameParts = playerName.toLowerCase().split(' ')
   const firstName = nameParts[0]
   const lastName = nameParts.slice(1).join(' ')
@@ -147,14 +154,14 @@ const checkGuess = (guess: string, playerName: string): boolean => {
     guessLower === fullName ||
     guessLower === firstName ||
     guessLower === lastName ||
-    fullName.includes(guessLower) ||
-    (guessLower.length > 3 && fullName.includes(guessLower))
+    (guessLower.length >= 3 && fullName.includes(guessLower))
   )
 }
 
 export default function JourneyPage() {
   const { soundEnabled } = useSettingsStore()
-  const [currentJourney, setCurrentJourney] = useState(journeys[0])
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [currentJourney, setCurrentJourney] = useState(validJourneys[0])
   const [guess, setGuess] = useState('')
   const [revealed, setRevealed] = useState(false)
   const [isCorrect, setIsCorrect] = useState(false)
@@ -201,14 +208,14 @@ export default function JourneyPage() {
   })
 
   const getRandomJourney = () => {
-    const available = journeys.filter((_, i) => !usedJourneys.includes(i))
+    const available = validJourneys.filter((_, i) => !usedJourneys.includes(i))
     if (available.length === 0) {
       setUsedJourneys([])
-      const idx = Math.floor(Math.random() * journeys.length)
-      return { journey: journeys[idx], index: idx }
+      const idx = Math.floor(Math.random() * validJourneys.length)
+      return { journey: validJourneys[idx], index: idx }
     }
     const idx = Math.floor(Math.random() * available.length)
-    const originalIdx = journeys.indexOf(available[idx])
+    const originalIdx = validJourneys.indexOf(available[idx])
     return { journey: available[idx], index: originalIdx }
   }
 
@@ -217,6 +224,8 @@ export default function JourneyPage() {
     setCurrentJourney(journey)
     setUsedJourneys([index])
     setVisibleTeams(1)
+    // Focus input on mount
+    setTimeout(() => inputRef.current?.focus(), 100)
   }, [])
 
   useEffect(() => {
@@ -261,6 +270,8 @@ export default function JourneyPage() {
     setVisibleTeams(1)
     setRound(round + 1)
     if (soundEnabled) sounds.click()
+    // Focus input for next round
+    setTimeout(() => inputRef.current?.focus(), 100)
   }
 
   const restartGame = () => {
@@ -361,10 +372,11 @@ export default function JourneyPage() {
                   className="space-y-3"
                 >
                   <input
+                    ref={inputRef}
                     type="text"
                     value={guess}
                     onChange={(e) => setGuess(e.target.value)}
-                    placeholder="Type player name..."
+                    placeholder="Type player name (min 2 chars)..."
                     className="w-full px-4 py-3 bg-gunmetal border border-surface rounded-xl text-ghost-white placeholder-muted focus:outline-none focus:border-electric-lime transition-colors"
                     autoComplete="off"
                     autoCorrect="off"
@@ -372,7 +384,7 @@ export default function JourneyPage() {
                   />
                   <button
                     onClick={handleGuess}
-                    disabled={!guess}
+                    disabled={!guess || guess.length < 2}
                     className="w-full py-3 bg-electric-lime text-deep-void font-bold rounded-xl hover:bg-green-400 transition-colors disabled:opacity-50"
                   >
                     Submit Guess
@@ -436,12 +448,30 @@ export default function JourneyPage() {
             className="glass rounded-2xl p-8 text-center"
           >
             <h2 className="text-3xl font-display font-bold mb-4">Game Complete!</h2>
-            <p className="text-5xl font-display font-bold text-electric-lime mb-6">{score} points</p>
+            <p className="text-5xl font-display font-bold text-electric-lime mb-2">{score} points</p>
+            <p className="text-muted mb-6">{correctCount}/5 correct</p>
+            
+            {/* Stats Summary */}
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="bg-surface rounded-xl p-4">
+                <p className="text-muted text-sm mb-1">Accuracy</p>
+                <p className="text-2xl font-bold text-electric-lime">
+                  {Math.round((correctCount / 5) * 100)}%
+                </p>
+              </div>
+              <div className="bg-surface rounded-xl p-4">
+                <p className="text-muted text-sm mb-1">Avg Time</p>
+                <p className="text-2xl font-bold">
+                  {gameStartTime > 0 ? Math.round((Date.now() - gameStartTime) / 1000 / 5) : 0}s
+                </p>
+              </div>
+            </div>
+
             <p className="text-muted mb-8">
-              {score >= 400 ? 'NBA Historian! 🏆' : 
-               score >= 300 ? 'Great knowledge! 🌟' : 
-               score >= 200 ? 'Not bad! Keep learning 📚' : 
-               'Keep practicing! 💪'}
+              {score >= 400 ? '🏆 NBA Historian!' : 
+               score >= 300 ? '🌟 Great knowledge!' : 
+               score >= 200 ? '📚 Not bad! Keep learning' : 
+               '💪 Keep practicing!'}
             </p>
             <div className="flex gap-4 justify-center">
               <button
@@ -454,7 +484,7 @@ export default function JourneyPage() {
                 href="/play"
                 className="px-8 py-3 bg-surface text-ghost-white font-bold rounded-xl"
               >
-                More Games
+                Back to Games
               </Link>
             </div>
           </motion.div>

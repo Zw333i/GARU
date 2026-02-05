@@ -9,6 +9,7 @@ import { useKeyboardControls } from '@/hooks/useKeyboardControls'
 import { useRolePlayers, FALLBACK_ROLE_PLAYERS, GamePlayer } from '@/hooks/useGamePlayers'
 import { supabase, saveGameScore, incrementRolePlayerGuesses } from '@/lib/supabase'
 import { SearchIcon, CheckIcon, XIcon, ArrowRightIcon, ArrowLeftIcon } from '@/components/icons'
+import { BasketballLoader } from '@/components/ui/BasketballLoader'
 
 // Timer icon component
 const TimerIcon = ({ size = 24 }: { size?: number }) => (
@@ -18,9 +19,13 @@ const TimerIcon = ({ size = 24 }: { size?: number }) => (
   </svg>
 )
 
-// Helper to check if guess matches player
+// Helper to check if guess matches player - require minimum 2 characters
 const checkGuess = (guess: string, playerName: string): boolean => {
   const guessLower = guess.toLowerCase().trim()
+  
+  // Require at least 2 characters for a valid guess
+  if (guessLower.length < 2) return false
+  
   const nameParts = playerName.toLowerCase().split(' ')
   const firstName = nameParts[0]
   const lastName = nameParts.slice(1).join(' ')
@@ -30,7 +35,7 @@ const checkGuess = (guess: string, playerName: string): boolean => {
     guessLower === fullName ||
     guessLower === firstName ||
     guessLower === lastName ||
-    fullName.includes(guessLower)
+    (guessLower.length >= 3 && fullName.includes(guessLower))
   )
 }
 
@@ -68,6 +73,7 @@ export default function WhosThatPage() {
   const [timedOut, setTimedOut] = useState(false)
   const [correctCount, setCorrectCount] = useState(0)
   const [gameStartTime, setGameStartTime] = useState<number>(0)
+
 
   const hints = currentPlayer ? [
     `Plays for the ${currentPlayer.team}`,
@@ -277,14 +283,11 @@ export default function WhosThatPage() {
     if (soundEnabled) sounds.click()
   }
 
-  // Loading state
+  // Loading state with basketball loader animation
   if (loading && supabasePlayers.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin w-12 h-12 border-4 border-electric-lime border-t-transparent rounded-full mx-auto mb-4"></div>
-          <p className="text-muted">Loading players from database...</p>
-        </div>
+        <BasketballLoader size="lg" text="Loading players..." />
       </div>
     )
   }
@@ -409,12 +412,14 @@ export default function WhosThatPage() {
       )}
 
       <div className="max-w-2xl mx-auto">
-        <h1 className="text-2xl md:text-3xl font-display font-bold text-center mb-8 flex items-center justify-center gap-3">
-          <SearchIcon className="text-electric-lime" size={32} />
-          Who&apos;s That Player?
-        </h1>
+        {!gameOver ? (
+          <>
+            <h1 className="text-2xl md:text-3xl font-display font-bold text-center mb-8 flex items-center justify-center gap-3">
+              <SearchIcon className="text-electric-lime" size={32} />
+              Who&apos;s That Player?
+            </h1>
 
-        {/* Game Card */}
+            {/* Game Card */}
         <motion.div layout className="glass rounded-2xl p-6 md:p-8">
           {/* Player Image */}
           <div className="relative w-48 h-48 mx-auto mb-6">
@@ -477,7 +482,7 @@ export default function WhosThatPage() {
                 
                 <button
                   onClick={handleGuess}
-                  disabled={!guess.trim()}
+                  disabled={guess.trim().length < 2}
                   className="w-full py-3 bg-electric-lime text-deep-void font-bold rounded-xl hover:bg-green-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Submit Guess
@@ -521,19 +526,43 @@ export default function WhosThatPage() {
             )}
           </AnimatePresence>
         </motion.div>
-
-        {/* Game Over Screen */}
-        {gameOver && (
+          </>
+        ) : (
+          /* Game Over Screen */
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="mt-8 glass rounded-2xl p-6 text-center"
+            className="glass rounded-2xl p-8 text-center"
           >
-            <h2 className="text-2xl font-display font-bold mb-2">Game Complete!</h2>
-            <p className="text-4xl font-display font-bold text-electric-lime mb-2">{score} points</p>
-            <p className="text-muted text-sm mb-4">
-              {questionCount} questions{timerEnabled ? ' • Timer mode' : ''}
+            <h2 className="text-3xl font-display font-bold mb-4">Game Complete!</h2>
+            <p className="text-5xl font-display font-bold text-electric-lime mb-2">{score} points</p>
+            <p className="text-muted mb-6">
+              {correctCount}/{questionCount} correct{timerEnabled ? ' • Timer mode' : ''}
             </p>
+            
+            {/* Stats Summary */}
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="bg-surface rounded-xl p-4">
+                <p className="text-muted text-sm mb-1">Accuracy</p>
+                <p className="text-2xl font-bold text-electric-lime">
+                  {questionCount > 0 ? Math.round((correctCount / questionCount) * 100) : 0}%
+                </p>
+              </div>
+              <div className="bg-surface rounded-xl p-4">
+                <p className="text-muted text-sm mb-1">Avg Time</p>
+                <p className="text-2xl font-bold">
+                  {gameStartTime > 0 ? Math.round((Date.now() - gameStartTime) / 1000 / questionCount) : 0}s
+                </p>
+              </div>
+            </div>
+
+            <p className="text-muted mb-6">
+              {score >= questionCount * 80 ? '🏆 Amazing! You really know your players!' : 
+               score >= questionCount * 50 ? '🌟 Great job! Keep practicing!' : 
+               score >= questionCount * 30 ? '📚 Not bad! Study those role players!' : 
+               '💪 Keep at it! Practice makes perfect!'}
+            </p>
+            
             <div className="flex gap-4 justify-center">
               <button
                 onClick={resetGame}
@@ -545,7 +574,7 @@ export default function WhosThatPage() {
                 href="/play"
                 className="px-6 py-3 bg-surface text-ghost-white font-bold rounded-xl"
               >
-                More Games
+                Back to Games
               </Link>
             </div>
           </motion.div>

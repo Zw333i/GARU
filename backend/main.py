@@ -8,10 +8,32 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
 import os
+import sys
+from pathlib import Path
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+# Environment validation
+REQUIRED_ENV_VARS = ["SUPABASE_URL", "SUPABASE_KEY"]
+OPTIONAL_ENV_VARS = ["HOST", "PORT", "DEBUG", "NBA_API_TIMEOUT"]
+
+def validate_environment():
+    """Validate required environment variables are set"""
+    missing = []
+    for var in REQUIRED_ENV_VARS:
+        if not os.getenv(var):
+            missing.append(var)
+    
+    if missing:
+        print(f"⚠️  Warning: Missing environment variables: {missing}")
+        print("   Some features may not work correctly.")
+        print("   Copy .env.example to .env and fill in your values.")
+    else:
+        print("✅ Environment validated successfully")
+
+validate_environment()
 
 # Import routers
 from routers import players, games, stats

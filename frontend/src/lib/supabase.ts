@@ -80,28 +80,64 @@ export interface DraftRoom {
   created_at: string
 }
 
-// Helper functions
+// In-memory cache for players - persists for the entire session
+let playersCache: Player[] | null = null
+
+// Get all players with session caching (loads once per session)
+async function getCachedPlayers(): Promise<Player[]> {
+  // Return cached data if available (persists for entire session)
+  if (playersCache) {
+    return playersCache
+  }
+  
+  // Fetch fresh data
+  const { data, error } = await supabase
+    .from('cached_players')
+    .select('*')
+  
+  if (error) throw error
+  
+  playersCache = data as Player[]
+  
+  return playersCache
+}
+
+// Force refresh cache (call this if you need to reload players)
+export function clearPlayersCache() {
+  playersCache = null
+}
+
+// Helper functions - uses cache
 export async function getPlayers(filters?: {
   team?: string
   position?: string
   minPPG?: number
 }) {
-  let query = supabase.from('cached_players').select('*')
+  const allPlayers = await getCachedPlayers()
+  
+  let players = allPlayers
   
   if (filters?.team) {
-    query = query.eq('team_abbreviation', filters.team)
+    players = players.filter(p => p.team_abbreviation === filters.team)
   }
   if (filters?.position) {
-    query = query.eq('position', filters.position)
+    players = players.filter(p => p.position === filters.position)
+  }
+  if (filters?.minPPG) {
+    players = players.filter(p => (p.season_stats?.pts || 0) >= filters.minPPG!)
   }
   
-  const { data, error } = await query
-  
-  if (error) throw error
-  return data as Player[]
+  return players
 }
 
 export async function getPlayerById(playerId: number) {
+  // First check cache
+  if (playersCache) {
+    const cached = playersCache.find(p => p.player_id === playerId)
+    if (cached) return cached
+  }
+  
+  // Fallback to direct query
   const { data, error } = await supabase
     .from('cached_players')
     .select('*')
@@ -112,16 +148,11 @@ export async function getPlayerById(playerId: number) {
   return data as Player
 }
 
-// Get random players for games
+// Get random players for games (uses cache)
 export async function getRandomPlayers(count: number = 10, minGames?: number) {
-  // Fetch all players and randomly select
-  let query = supabase.from('cached_players').select('*')
+  const allPlayers = await getCachedPlayers()
   
-  const { data, error } = await query
-  
-  if (error) throw error
-  
-  let players = data as Player[]
+  let players = allPlayers
   
   // Filter by minimum games played if specified
   if (minGames) {
@@ -129,52 +160,39 @@ export async function getRandomPlayers(count: number = 10, minGames?: number) {
   }
   
   // Shuffle and take count
-  const shuffled = players.sort(() => Math.random() - 0.5)
+  const shuffled = [...players].sort(() => Math.random() - 0.5)
   return shuffled.slice(0, count)
 }
 
-// Get star players (high PPG)
+// Get star players (high PPG) - uses cache
 export async function getStarPlayers(minPPG: number = 20) {
-  const { data, error } = await supabase
-    .from('cached_players')
-    .select('*')
+  const allPlayers = await getCachedPlayers()
   
-  if (error) throw error
-  
-  const players = (data as Player[]).filter(
+  const players = allPlayers.filter(
     p => (p.season_stats?.pts || 0) >= minPPG
   )
   
   return players.sort((a, b) => (b.season_stats?.pts || 0) - (a.season_stats?.pts || 0))
 }
 
-// Get role players (medium PPG, for guessing games)
+// Get role players (medium PPG, for guessing games) - uses cache
 export async function getRolePlayers(minPPG: number = 8, maxPPG: number = 18, minGames: number = 15) {
-  const { data, error } = await supabase
-    .from('cached_players')
-    .select('*')
+  const allPlayers = await getCachedPlayers()
   
-  if (error) throw error
-  
-  const players = (data as Player[]).filter(p => {
+  const players = allPlayers.filter(p => {
     const pts = p.season_stats?.pts || 0
     const gp = p.season_stats?.gp || 0
     return pts >= minPPG && pts <= maxPPG && gp >= minGames
   })
   
-  return players.sort(() => Math.random() - 0.5)
+  return [...players].sort(() => Math.random() - 0.5)
 }
 
-// Get players by position for draft
+// Get players by position for draft - uses cache
 export async function getPlayersByPosition(position: string, count: number = 5) {
-  const { data, error } = await supabase
-    .from('cached_players')
-    .select('*')
-    .eq('position', position)
+  const allPlayers = await getCachedPlayers()
   
-  if (error) throw error
-  
-  const players = data as Player[]
+  const players = allPlayers.filter(p => p.position === position)
   
   // Sort by rating and return top count
   return players
@@ -182,15 +200,9 @@ export async function getPlayersByPosition(position: string, count: number = 5) 
     .slice(0, count)
 }
 
-// Get all players for draft pools (grouped by position)
+// Get all players for draft pools (grouped by position) - uses cache
 export async function getDraftPlayerPools() {
-  const { data, error } = await supabase
-    .from('cached_players')
-    .select('*')
-  
-  if (error) throw error
-  
-  const players = data as Player[]
+  const allPlayers = await getCachedPlayers()
   
   // Group by position and sort each group by rating
   const pools: Record<string, Player[]> = {
@@ -201,7 +213,7 @@ export async function getDraftPlayerPools() {
     C: []
   }
   
-  for (const player of players) {
+  for (const player of allPlayers) {
     const pos = player.position
     if (pos in pools) {
       pools[pos].push(player)
