@@ -8,6 +8,7 @@ import { create } from 'zustand'
 import { persist, createJSONStorage } from 'zustand/middleware'
 import { supabase } from '@/lib/supabase'
 import type { UserAchievement } from '@/lib/supabase'
+import { calculateLevel } from '@/lib/xpUtils'
 
 // User stats from database
 export interface UserStats {
@@ -241,6 +242,7 @@ export const useSessionDataStore = create<SessionDataState>()(
         // Update local stats
         if (userStats) {
           const isWin = game.correctAnswers >= game.questionsAnswered / 2
+          const newXP = userStats.xp + game.score
           set({
             gameHistory: newHistory,
             userStats: {
@@ -248,8 +250,8 @@ export const useSessionDataStore = create<SessionDataState>()(
               gamesPlayed: userStats.gamesPlayed + 1,
               wins: userStats.wins + (isWin ? 1 : 0),
               losses: userStats.losses + (isWin ? 0 : 1),
-              xp: userStats.xp + game.score,
-              level: Math.floor((userStats.xp + game.score) / 100) + 1,
+              xp: newXP,
+              level: calculateLevel(newXP), // Use proper scaling XP system
               currentStreak: isWin ? userStats.currentStreak + 1 : 0,
               bestStreak: isWin ? Math.max(userStats.bestStreak, userStats.currentStreak + 1) : userStats.bestStreak,
             },

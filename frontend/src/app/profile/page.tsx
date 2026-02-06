@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
-import { signInWithGoogle, signOut, ACHIEVEMENTS, UserAchievement } from '@/lib/supabase'
+import { signInWithGoogle, signOut, ACHIEVEMENTS, UserAchievement, supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSessionDataStore } from '@/store/sessionDataStore'
+import { getXPProgress } from '@/lib/xpUtils'
 import {
   BasketballIcon,
   ChartIcon,
@@ -70,6 +71,106 @@ export default function ProfilePage() {
   }
   
   const userAchievements = sessionAchievements
+  
+  // Use proper XP scaling system
+  const xpData = useMemo(() => getXPProgress(userStats.xp), [userStats.xp])
+  
+  // Avatar upload state
+  const [customAvatarUrl, setCustomAvatarUrl] = useState<string | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  
+  // Fetch custom avatar URL from database
+  useEffect(() => {
+    if (user?.id) {
+      const fetchAvatar = async () => {
+        const { data } = await supabase
+          .from('users')
+          .select('avatar_url')
+          .eq('id', user.id)
+          .single()
+        if (data?.avatar_url) {
+          setCustomAvatarUrl(data.avatar_url)
+        }
+      }
+      fetchAvatar()
+    }
+  }, [user?.id])
+  
+  // Get the avatar to display (custom > Google > default)
+  const displayAvatarUrl = customAvatarUrl || user?.user_metadata?.avatar_url
+  
+  // Handle avatar upload
+  const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file || !user) return
+    
+    // Validate file
+    if (!file.type.startsWith('image/')) {
+      setUploadError('Please select an image file')
+      return
+    }
+    if (file.size > 2 * 1024 * 1024) { // 2MB limit
+      setUploadError('Image must be less than 2MB')
+      return
+    }
+    
+    setIsUploading(true)
+    setUploadError(null)
+    
+    try {
+      // Upload to Supabase Storage
+      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+      const filePath = `${user.id}.${fileExt}`  // Just filename, bucket is 'avatars'
+      
+      // Delete existing avatar first to avoid conflicts
+      await supabase.storage
+        .from('avatars')
+        .remove([filePath])
+      
+      const { error: storageError } = await supabase.storage
+        .from('avatars')
+        .upload(filePath, file, { upsert: true })
+      
+      if (storageError) {
+        console.error('Storage error:', storageError)
+        throw new Error(storageError.message)
+      }
+      
+      // Get public URL with cache bust
+      const { data: urlData } = supabase.storage
+        .from('avatars')
+        .getPublicUrl(filePath)
+      
+      const avatarUrl = `${urlData.publicUrl}?t=${Date.now()}`
+      
+      // Update user profile in database
+      const { error: dbError } = await supabase
+        .from('users')
+        .update({ avatar_url: avatarUrl })
+        .eq('id', user.id)
+      
+      if (dbError) {
+        console.error('DB update error:', dbError)
+        throw new Error(dbError.message)
+      }
+      
+      // Force state update with new URL
+      setCustomAvatarUrl(null) // Clear first
+      setTimeout(() => {
+        setCustomAvatarUrl(avatarUrl)
+        setIsUploading(false)
+      }, 100)
+      
+      console.log('✅ Avatar uploaded successfully:', avatarUrl)
+      return // Exit early since we set isUploading in setTimeout
+    } catch (err) {
+      console.error('Avatar upload failed:', err)
+      setUploadError(err instanceof Error ? err.message : 'Upload failed. Please try again.')
+      setIsUploading(false)
+    }
+  }
 
   // Fetch stats when user is authenticated (uses session cache)
   useEffect(() => {
@@ -118,10 +219,53 @@ export default function ProfilePage() {
         className="glass rounded-2xl p-6 mb-6"
       >
         <div className="flex flex-col md:flex-row items-center gap-6">
-          {/* Avatar */}
-          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-electric-lime to-green-600 flex items-center justify-center">
-            <BasketballIcon size={48} className="text-deep-void" />
+          {/* Avatar with upload functionality */}
+          <div className="relative group">
+            <div 
+              className={`w-24 h-24 rounded-full flex items-center justify-center overflow-hidden cursor-pointer transition-all ${
+                isAuthenticated ? 'hover:ring-2 hover:ring-electric-lime' : ''
+              } ${isUploading ? 'opacity-50' : ''}`}
+              onClick={() => isAuthenticated && fileInputRef.current?.click()}
+            >
+              {displayAvatarUrl ? (
+                <img 
+                  src={displayAvatarUrl} 
+                  alt="Avatar" 
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-electric-lime to-green-600 flex items-center justify-center">
+                  <BasketballIcon size={48} className="text-deep-void" />
+                </div>
+              )}
+            </div>
+            
+            {/* Upload overlay on hover */}
+            {isAuthenticated && (
+              <div 
+                className="absolute inset-0 rounded-full bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <span className="text-xs text-white font-medium">
+                  {isUploading ? 'Uploading...' : 'Change'}
+                </span>
+              </div>
+            )}
+            
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleAvatarUpload}
+              className="hidden"
+            />
           </div>
+          
+          {/* Upload error message */}
+          {uploadError && (
+            <p className="text-red-400 text-xs mt-1">{uploadError}</p>
+          )}
 
           {/* User Info */}
           <div className="flex-1 text-center md:text-left">
@@ -147,12 +291,9 @@ export default function ProfilePage() {
             ) : (
               <>
                 <div className="flex items-center gap-3 justify-center md:justify-start mb-2">
-                  {user?.user_metadata?.avatar_url && (
-                    <img src={user.user_metadata.avatar_url} alt="Avatar" className="w-10 h-10 rounded-full" />
-                  )}
                   <h1 className="text-2xl font-display font-bold">{user?.user_metadata?.full_name || user?.email}</h1>
                 </div>
-                <p className="text-muted mb-2">Level {userStats.level} • {userStats.xp} XP</p>
+                <p className="text-muted mb-2">Level {xpData.level} • {userStats.xp} Total XP</p>
                 <button onClick={handleSignOut} className="text-sm text-muted hover:text-hot-pink transition-colors">
                   Sign out
                 </button>
@@ -163,13 +304,13 @@ export default function ProfilePage() {
           {/* Level Progress */}
           <div className="w-full md:w-48">
             <div className="flex justify-between text-sm mb-1">
-              <span className="text-muted">Level {userStats.level}</span>
-              <span className="text-muted">{userStats.xp}/100 XP</span>
+              <span className="text-muted">Level {xpData.level}</span>
+              <span className="text-muted">{xpData.currentXP}/{xpData.requiredXP} XP</span>
             </div>
             <div className="h-3 bg-gunmetal rounded-full overflow-hidden">
               <div 
                 className="h-full bg-gradient-to-r from-electric-lime to-green-400 rounded-full transition-all"
-                style={{ width: `${userStats.xp}%` }}
+                style={{ width: `${xpData.progressPercent}%` }}
               />
             </div>
           </div>

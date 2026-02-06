@@ -480,7 +480,7 @@ async def get_player_efficiency(player_id: int, season: str = "2024-25"):
         dashboard = playerdashboardbygeneralsplits.PlayerDashboardByGeneralSplits(
             player_id=player_id,
             season=season,
-            season_type_all_star='Regular Season'
+            season_type_playoffs='Regular Season'
         )
         
         df = dashboard.get_data_frames()[0]
@@ -643,20 +643,45 @@ async def get_player_heatmap(player_id: int, season: str = "2024-25"):
     # Create KDE heatmap FIRST (so court lines are drawn on top)
     try:
         xy = np.vstack([shots_x, shots_y])
-        kde = scipy_stats.gaussian_kde(xy, bw_method=0.12)
+        # Use larger bandwidth for smooth, flowing heat zones (not discrete blobs)
+        kde = scipy_stats.gaussian_kde(xy, bw_method=0.25)
         
         # Create high-resolution grid for smooth heatmap
-        x_grid = np.linspace(-250, 250, 300)
-        y_grid = np.linspace(-50, 300, 250)
+        x_grid = np.linspace(-250, 250, 500)
+        y_grid = np.linspace(-50, 300, 438)
         X, Y = np.meshgrid(x_grid, y_grid)
         Z = kde(np.vstack([X.ravel(), Y.ravel()])).reshape(X.shape)
         
-        # Use magma colormap (black -> purple -> orange -> yellow)
-        cmap = plt.cm.magma
+        # Apply power transform to enhance mid-range visibility
+        Z_power = np.power(Z, 0.5)  # Boost lower density areas
         
-        # Use imshow for smooth heatmap (no circles/contours)
-        extent = [-250, 250, -50, 300]
-        im = ax.imshow(Z, extent=extent, origin='lower', cmap=cmap, aspect='auto', alpha=0.95)
+        # Normalize to 0-1 range
+        Z_min = Z_power.min()
+        Z_max = Z_power.max()
+        if Z_max > Z_min:
+            Z_norm = (Z_power - Z_min) / (Z_max - Z_min)
+        else:
+            Z_norm = Z_power
+        
+        # Use inferno colormap (black -> purple -> red -> orange -> yellow)
+        # Create custom colormap that starts from black for smooth blend
+        from matplotlib.colors import LinearSegmentedColormap
+        colors = [
+            (0.0, '#000000'),   # Black at 0
+            (0.1, '#1a0a24'),   # Very dark purple
+            (0.25, '#4a1076'),  # Dark purple
+            (0.4, '#8b1a6b'),   # Purple-magenta
+            (0.55, '#c92e4a'),  # Red
+            (0.7, '#e85a2c'),   # Orange-red
+            (0.85, '#f99c1c'),  # Orange
+            (1.0, '#fcec38')    # Yellow
+        ]
+        cmap = LinearSegmentedColormap.from_list('smooth_heat', 
+            [(pos, col) for pos, col in colors])
+        
+        # Use contourf for smooth filled contours like reference image
+        levels = 50  # Many levels for smooth gradients
+        im = ax.contourf(X, Y, Z_norm, levels=levels, cmap=cmap, antialiased=True)
         
     except Exception:
         im = None
@@ -714,9 +739,19 @@ async def get_player_heatmap(player_id: int, season: str = "2024-25"):
     data_label = f"({len(shots_x)} shots)" if using_real_data else "(simulated)"
     ax.set_title(f'Shot Distribution Heatmap {data_label}', color='white', fontsize=16, pad=10, fontweight='bold')
     
-    # Horizontal colorbar at bottom
+    # Horizontal colorbar at bottom - use opaque version for legend
     if im is not None:
-        cbar = plt.colorbar(im, cax=cax, orientation='horizontal')
+        # Create an opaque colormap matching the heatmap colors
+        from matplotlib.colors import LinearSegmentedColormap
+        legend_colors = ['#000000', '#1a0a24', '#4a1076', '#8b1a6b', '#c92e4a', '#e85a2c', '#f99c1c', '#fcec38']
+        legend_cmap = LinearSegmentedColormap.from_list('legend_heat', legend_colors)
+        
+        # Create a dummy ScalarMappable for the legend colorbar
+        import matplotlib.cm as cm
+        sm = cm.ScalarMappable(cmap=legend_cmap)
+        sm.set_array([])
+        
+        cbar = plt.colorbar(sm, cax=cax, orientation='horizontal')
         cbar.ax.xaxis.set_tick_params(color='white')
         cbar.outline.set_edgecolor('white')
         cbar.ax.tick_params(labelsize=0)  # Hide tick labels

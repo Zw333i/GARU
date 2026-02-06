@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { calculateLevel } from '@/lib/xpUtils'
 
 interface User {
   id: string
@@ -62,8 +63,7 @@ export const useUserStore = create<UserState>()(
       addXP: (amount) =>
         set((state) => {
           const newXP = state.stats.xp + amount
-          const xpPerLevel = 100
-          const newLevel = Math.floor(newXP / xpPerLevel) + 1
+          const newLevel = calculateLevel(newXP) // Use proper scaling XP system
           return {
             stats: {
               ...state.stats,

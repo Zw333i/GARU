@@ -150,39 +150,62 @@ export default function PlayPage() {
   })
 
   // Fetch games played counts from database
-  useEffect(() => {
-    const fetchGamesCounts = async () => {
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) return
+  const fetchGamesCounts = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
 
-        // Fetch all game scores for the user and count by game_type
-        const { data: scores } = await supabase
-          .from('game_scores')
-          .select('game_type')
-          .eq('user_id', user.id)
+      // Fetch all game scores for the user and count by game_type
+      const { data: scores } = await supabase
+        .from('game_scores')
+        .select('game_type')
+        .eq('user_id', user.id)
 
-        if (scores) {
-          const counts: Record<string, number> = {
-            'whos-that': 0,
-            'the-journey': 0,
-            'blind-comparison': 0,
-            'stat-attack': 0,
-          }
-          scores.forEach((score) => {
-            const gameType = score.game_type
-            if (gameType in counts) {
-              counts[gameType]++
-            }
-          })
-          setGamesPlayedCounts(counts)
+      if (scores) {
+        const counts: Record<string, number> = {
+          'whos-that': 0,
+          'the-journey': 0,
+          'blind-comparison': 0,
+          'stat-attack': 0,
         }
-      } catch (err) {
-        console.error('Error fetching game counts:', err)
+        scores.forEach((score) => {
+          const gameType = score.game_type
+          if (gameType in counts) {
+            counts[gameType]++
+          }
+        })
+        setGamesPlayedCounts(counts)
+      }
+    } catch (err) {
+      console.error('Error fetching game counts:', err)
+    }
+  }
+
+  // Fetch on mount
+  useEffect(() => {
+    fetchGamesCounts()
+  }, [])
+
+  // Auto-refresh when page becomes visible (user returns from a game)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchGamesCounts()
       }
     }
 
-    fetchGamesCounts()
+    // Also refresh when window gains focus
+    const handleFocus = () => {
+      fetchGamesCounts()
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    window.addEventListener('focus', handleFocus)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleFocus)
+    }
   }, [])
 
   // Combine definitions with games played counts

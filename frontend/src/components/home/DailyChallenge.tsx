@@ -5,6 +5,7 @@ import { motion } from 'framer-motion'
 import { TargetIcon, QuestionIcon, XIcon, ConfettiIcon } from '@/components/icons'
 import { sounds } from '@/lib/sounds'
 import { supabase } from '@/lib/supabase'
+import { calculateLevel } from '@/lib/xpUtils'
 
 // XP reward for daily challenge
 const DAILY_CHALLENGE_XP = 25
@@ -124,7 +125,7 @@ export function DailyChallenge() {
       if (userData) {
         const xpGain = correct ? DAILY_CHALLENGE_XP : Math.floor(DAILY_CHALLENGE_XP / 2) // Half XP for trying
         const newXP = (userData.xp || 0) + xpGain
-        const newLevel = Math.floor(newXP / 100) + 1
+        const newLevel = calculateLevel(newXP) // Use proper scaling XP system
         const newDailyChallenges = (userData.daily_challenges_completed || 0) + 1
         const newStreak = correct ? (userData.current_streak || 0) + 1 : 0
         const newBestStreak = Math.max(userData.best_streak || 0, newStreak)

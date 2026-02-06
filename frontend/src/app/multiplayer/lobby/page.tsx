@@ -18,6 +18,7 @@ interface Player {
   score: number
   answers: any[]
   username?: string
+  avatar_url?: string
 }
 
 interface Room {
@@ -48,6 +49,8 @@ function LobbyContent() {
   const [copied, setCopied] = useState(false)
   const [hostUsername, setHostUsername] = useState<string>('Host')
   const [guestUsername, setGuestUsername] = useState<string>('Waiting...')
+  const [hostAvatarUrl, setHostAvatarUrl] = useState<string | null>(null)
+  const [guestAvatarUrl, setGuestAvatarUrl] = useState<string | null>(null)
 
   // Fetch room data
   const fetchRoom = useCallback(async () => {
@@ -72,31 +75,37 @@ function LobbyContent() {
     }
   }, [roomCode, router])
 
-  // Fetch usernames
+  // Fetch usernames and avatars
   const fetchUsernames = useCallback(async () => {
     if (!room) return
 
-    // Fetch host username
+    // Fetch host username and avatar
     const { data: hostData } = await supabase
       .from('users')
-      .select('username')
+      .select('username, avatar_url')
       .eq('id', room.host_id)
       .single()
     
     if (hostData?.username) {
       setHostUsername(hostData.username)
     }
+    if (hostData?.avatar_url) {
+      setHostAvatarUrl(hostData.avatar_url)
+    }
 
-    // Fetch guest username
+    // Fetch guest username and avatar
     if (room.guest_id) {
       const { data: guestData } = await supabase
         .from('users')
-        .select('username')
+        .select('username, avatar_url')
         .eq('id', room.guest_id)
         .single()
       
       if (guestData?.username) {
         setGuestUsername(guestData.username)
+      }
+      if (guestData?.avatar_url) {
+        setGuestAvatarUrl(guestData.avatar_url)
       }
     }
   }, [room])
@@ -292,8 +301,14 @@ function LobbyContent() {
           <div className="space-y-3">
             {/* Host */}
             <div className="flex items-center gap-3 p-3 bg-surface rounded-xl">
-              <div className="w-10 h-10 rounded-full bg-electric-lime/20 flex items-center justify-center">
-                <CrownIcon className="text-electric-lime" size={20} />
+              <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center">
+                {hostAvatarUrl ? (
+                  <img src={hostAvatarUrl} alt={hostUsername} className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-electric-lime/20 flex items-center justify-center">
+                    <CrownIcon className="text-electric-lime" size={20} />
+                  </div>
+                )}
               </div>
               <div className="flex-1">
                 <p className="font-bold">{hostUsername}</p>
@@ -308,8 +323,18 @@ function LobbyContent() {
             <div className={`flex items-center gap-3 p-3 rounded-xl ${
               room.guest_id ? 'bg-surface' : 'bg-surface/50 border border-dashed border-surface'
             }`}>
-              <div className="w-10 h-10 rounded-full bg-hot-pink/20 flex items-center justify-center">
-                {room.guest_id ? <GamepadIcon className="text-hot-pink" size={20} /> : <HourglassIcon className="text-muted" size={20} />}
+              <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center">
+                {guestAvatarUrl ? (
+                  <img src={guestAvatarUrl} alt={guestUsername} className="w-full h-full object-cover" />
+                ) : room.guest_id ? (
+                  <div className="w-full h-full bg-hot-pink/20 flex items-center justify-center">
+                    <GamepadIcon className="text-hot-pink" size={20} />
+                  </div>
+                ) : (
+                  <div className="w-full h-full bg-surface flex items-center justify-center">
+                    <HourglassIcon className="text-muted" size={20} />
+                  </div>
+                )}
               </div>
               <div className="flex-1">
                 <p className={`font-bold ${!room.guest_id && 'text-muted'}`}>

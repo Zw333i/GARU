@@ -426,52 +426,50 @@ export default function LabPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center p-4"
+            className="fixed inset-0 z-50 bg-black/95 flex flex-col"
             onClick={() => setShowFullscreen(false)}
           >
-            <motion.div
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              className="relative max-w-5xl w-full"
+            {/* Fixed Header */}
+            <div className="flex-shrink-0 flex items-center justify-between p-4 md:px-8">
+              <h2 className="text-lg md:text-xl font-bold text-white">{selectedPlayer.name} - Shot Heatmap</h2>
+              <button
+                onClick={() => setShowFullscreen(false)}
+                className="text-white hover:text-electric-lime transition-colors p-2"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            {/* Scrollable Image Container */}
+            <div 
+              className="flex-1 overflow-auto flex items-center justify-center px-4"
               onClick={(e) => e.stopPropagation()}
             >
-              {/* Header with player name and close button */}
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-white">{selectedPlayer.name} - Shot Heatmap</h2>
-                <button
-                  onClick={() => setShowFullscreen(false)}
-                  className="text-white hover:text-electric-lime transition-colors p-2"
-                >
-                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M18 6L6 18M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              
-              {/* Fullscreen Image */}
               <img 
                 src={heatmapUrl} 
                 alt={`${selectedPlayer.name} Shot Heatmap`}
-                className="w-full h-auto rounded-lg"
+                className="max-w-full max-h-[calc(100vh-200px)] w-auto h-auto rounded-lg object-contain"
               />
-              
-              {/* Download Button */}
-              <div className="flex justify-center mt-4">
-                <button
-                  onClick={handleDownload}
-                  className="flex items-center gap-2 px-6 py-3 bg-electric-lime text-gunmetal font-bold rounded-lg hover:bg-electric-lime/90 transition-colors"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
-                  </svg>
-                  Download Heatmap
-                </button>
-              </div>
-              
-              {/* Click outside hint */}
-              <p className="text-center text-muted text-sm mt-4">Click outside or press the X to close</p>
-            </motion.div>
+            </div>
+            
+            {/* Fixed Footer with Download Button */}
+            <div 
+              className="flex-shrink-0 flex flex-col items-center gap-2 p-4 md:pb-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                onClick={handleDownload}
+                className="flex items-center gap-2 px-6 py-3 bg-electric-lime text-gunmetal font-bold rounded-lg hover:bg-electric-lime/90 transition-colors"
+              >
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" />
+                </svg>
+                Download Heatmap
+              </button>
+              <p className="text-muted text-sm">Click outside or press X to close</p>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>

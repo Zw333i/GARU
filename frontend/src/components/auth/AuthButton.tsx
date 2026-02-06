@@ -6,10 +6,33 @@ import { supabase } from '@/lib/supabase'
 import { useUserStore } from '@/store/userStore'
 import { ProfileIcon, LogoutIcon, GoogleIcon } from '@/components/icons'
 
+// Get first name from full name
+function getFirstName(fullName: string): string {
+  if (!fullName) return 'Player'
+  return fullName.split(' ')[0]
+}
+
 export function AuthButton() {
   const { user, isAuthenticated, setUser, logout } = useUserStore()
   const [isLoading, setIsLoading] = useState(false)
   const [showDropdown, setShowDropdown] = useState(false)
+  const [customAvatarUrl, setCustomAvatarUrl] = useState<string | null>(null)
+
+  // Fetch custom avatar from database
+  useEffect(() => {
+    const fetchCustomAvatar = async () => {
+      if (!user?.id) return
+      const { data } = await supabase
+        .from('users')
+        .select('avatar_url')
+        .eq('id', user.id)
+        .single()
+      if (data?.avatar_url) {
+        setCustomAvatarUrl(data.avatar_url)
+      }
+    }
+    fetchCustomAvatar()
+  }, [user?.id])
 
   // Check session on mount
   useEffect(() => {
@@ -35,13 +58,20 @@ export function AuthButton() {
           email: session.user.email,
           avatarUrl: session.user.user_metadata?.avatar_url,
         })
+        // Reset custom avatar to refetch
+        setCustomAvatarUrl(null)
       } else {
         logout()
+        setCustomAvatarUrl(null)
       }
     })
 
     return () => subscription.unsubscribe()
   }, [setUser, logout])
+
+  // Display avatar: custom > Google > default
+  const displayAvatarUrl = customAvatarUrl || user?.avatarUrl
+  const displayName = getFirstName(user?.username || 'Player')
 
   const signInWithGoogle = async () => {
     setIsLoading(true)
@@ -96,17 +126,17 @@ export function AuthButton() {
         whileTap={{ scale: 0.98 }}
         className="flex items-center gap-2 px-3 py-2 glass rounded-lg"
       >
-        {user?.avatarUrl ? (
+        {displayAvatarUrl ? (
           <img
-            src={user.avatarUrl}
-            alt={user.username}
-            className="w-7 h-7 rounded-full"
+            src={displayAvatarUrl}
+            alt={displayName}
+            className="w-7 h-7 rounded-full object-cover"
           />
         ) : (
           <ProfileIcon size={20} className="text-electric-lime" />
         )}
         <span className="hidden md:block text-sm font-medium max-w-[120px] truncate">
-          {user?.username}
+          {displayName}
         </span>
       </motion.button>
 

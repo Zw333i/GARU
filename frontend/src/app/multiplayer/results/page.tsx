@@ -230,8 +230,14 @@ function ResultsContent() {
                     <CrownIcon className="text-electric-lime" size={28} />
                   </div>
                 )}
-                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-electric-lime to-blue-500 mx-auto mb-3 flex items-center justify-center text-2xl font-bold">
-                  {profile?.username?.[0]?.toUpperCase() || '?'}
+                <div className="w-16 h-16 rounded-full mx-auto mb-3 flex items-center justify-center overflow-hidden">
+                  {profile?.avatar_url ? (
+                    <img src={profile.avatar_url} alt={profile.username} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-gradient-to-br from-electric-lime to-blue-500 flex items-center justify-center text-2xl font-bold">
+                      {profile?.username?.[0]?.toUpperCase() || '?'}
+                    </div>
+                  )}
                 </div>
                 <h3 className="font-bold text-lg mb-1">
                   {profile?.username || 'Unknown'}

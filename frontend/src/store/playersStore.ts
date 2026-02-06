@@ -122,10 +122,24 @@ export const usePlayersStore = create<PlayersState>()(
       fetchPlayers: async () => {
         const state = get()
         
-        // Skip if already loaded or currently loading
-        if (state.isLoaded || state.isLoading) {
-          console.log('📦 Players already cached, skipping fetch')
+        // Skip if currently loading
+        if (state.isLoading) {
+          console.log('📦 Already loading players, skipping')
           return
+        }
+        
+        // Force refresh if we have too few players (fallback data)
+        const hasEnoughPlayers = state.players.length > 100
+        
+        // Skip if already loaded with real data
+        if (state.isLoaded && hasEnoughPlayers) {
+          console.log(`📦 Players already cached (${state.players.length}), skipping fetch`)
+          return
+        }
+        
+        // If we have cached fallback data, we need to refetch
+        if (state.isLoaded && !hasEnoughPlayers) {
+          console.log('🔄 Detected fallback data, forcing refresh from database...')
         }
 
         set({ isLoading: true, error: null })
@@ -134,7 +148,7 @@ export const usePlayersStore = create<PlayersState>()(
         try {
           const { data, error } = await supabase
             .from('cached_players')
-            .select('player_id, full_name, team_abbreviation, position, season_stats, rating')
+            .select('player_id, full_name, team_abbreviation, position, season_stats')
             .order('season_stats->pts', { ascending: false })
             .limit(500)
 

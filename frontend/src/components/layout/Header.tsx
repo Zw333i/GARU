@@ -235,7 +235,7 @@ export function Header() {
                     animate={{ opacity: 1, y: 0, scale: 1 }}
                     exit={{ opacity: 0, y: -10, scale: 0.95 }}
                     transition={{ duration: 0.15 }}
-                    className="absolute right-0 top-12 w-80 bg-gunmetal border border-surface rounded-xl shadow-2xl overflow-hidden z-50"
+                    className="absolute right-0 top-12 w-80 bg-gunmetal border border-surface rounded-xl shadow-2xl overflow-hidden z-[100]"
                   >
                     <div className="p-3 border-b border-surface flex justify-between items-center">
                       <h3 className="font-display font-bold text-sm">Notifications</h3>

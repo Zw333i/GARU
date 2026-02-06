@@ -161,7 +161,7 @@ function MultiplayerContent() {
       router.push(`/multiplayer/lobby?code=${joinCode.toUpperCase()}`)
     } catch (err) {
       console.error('Failed to join room:', err)
-      setError('Failed to join room. Please try again.')
+      setError('Failed to join room. Try again.')
     } finally {
       setLoading(false)
     }
@@ -364,7 +364,7 @@ function MultiplayerContent() {
 
               {!isAuthenticated && !authLoading && (
                 <p className="text-center text-muted text-sm mt-3">
-                  <Link href="/profile" className="text-electric-lime hover:underline">sign in</Link> to join a game
+                  <Link href="/profile" className="text-electric-lime hover:underline">Sign in</Link> to join a game
                 </p>
               )}
             </div>

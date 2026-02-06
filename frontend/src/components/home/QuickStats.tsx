@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useAuthStore } from '@/store/authStore'
 import { useSessionDataStore } from '@/store/sessionDataStore'
 import { FireIcon, TrophyIcon } from '@/components/icons'
+import { getXPProgress } from '@/lib/xpUtils'
 
 // NBA Trivia facts
 const NBA_TRIVIA = [
@@ -73,8 +74,11 @@ export function QuickStats() {
   }
 
   const loading = authLoading || isStatsLoading
-  const xpProgress = stats.level > 0 ? (stats.xp % 100) : 0
-  const xpToNext = 100
+  
+  // Use proper XP scaling system
+  const xpData = useMemo(() => getXPProgress(stats.xp), [stats.xp])
+  const xpProgress = xpData.currentXP
+  const xpToNext = xpData.requiredXP
 
   return (
     <motion.div
