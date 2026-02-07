@@ -127,6 +127,28 @@ function GameContent() {
     }
   }, [roomCode, router])
 
+  // Polling fallback for game status changes
+  useEffect(() => {
+    if (!roomCode || !room) return
+
+    const interval = setInterval(async () => {
+      const { data } = await supabase
+        .from('multiplayer_rooms')
+        .select('status, players')
+        .eq('code', roomCode)
+        .single()
+
+      if (data?.status === 'finished') {
+        router.push(`/multiplayer/results?code=${roomCode}`)
+      }
+      if (data?.players) {
+        setRoom(prev => prev ? { ...prev, players: data.players } : prev)
+      }
+    }, 3000)
+
+    return () => clearInterval(interval)
+  }, [roomCode, room?.id, router])
+
   // Timer countdown
   useEffect(() => {
     if (loading || !room || answered || showResult) return

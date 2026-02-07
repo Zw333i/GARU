@@ -61,6 +61,7 @@ function LobbyContent() {
   const fetchRoom = useCallback(async () => {
     if (!roomCode) return
 
+    console.log('[Lobby] Fetching room:', roomCode)
     const { data, error } = await supabase
       .from('multiplayer_rooms')
       .select('*')
@@ -68,7 +69,7 @@ function LobbyContent() {
       .single()
 
     if (error) {
-      console.error('Error fetching room:', error)
+      console.error('[Lobby] Error fetching room:', error)
       setError('Room not found or has expired')
       return
     }
@@ -78,6 +79,7 @@ function LobbyContent() {
       return
     }
 
+    console.log('[Lobby] Room loaded, status:', data.status, 'guest_id:', data.guest_id)
     setRoom(data as Room)
 
     // If game started, redirect to game
@@ -86,57 +88,54 @@ function LobbyContent() {
     }
   }, [roomCode, router])
 
-  // Fetch usernames and avatars
-  const fetchUsernames = useCallback(async () => {
-    if (!room) return
+  // Fetch usernames whenever host_id or guest_id changes
+  useEffect(() => {
+    if (!room?.host_id) return
 
-    // Fetch host username and avatar
-    const { data: hostData } = await supabase
-      .from('users')
-      .select('username, avatar_url')
-      .eq('id', room.host_id)
-      .single()
-    
-    if (hostData?.username) {
-      setHostUsername(hostData.username)
-    }
-    if (hostData?.avatar_url) {
-      setHostAvatarUrl(hostData.avatar_url)
-    }
-
-    // Fetch guest username and avatar
-    if (room.guest_id) {
-      const { data: guestData } = await supabase
+    const fetchHost = async () => {
+      const { data } = await supabase
         .from('users')
         .select('username, avatar_url')
-        .eq('id', room.guest_id)
+        .eq('id', room.host_id)
         .single()
-      
-      if (guestData?.username) {
-        setGuestUsername(guestData.username)
-      }
-      if (guestData?.avatar_url) {
-        setGuestAvatarUrl(guestData.avatar_url)
-      }
+      if (data?.username) setHostUsername(data.username)
+      if (data?.avatar_url) setHostAvatarUrl(data.avatar_url)
     }
-  }, [room])
+    fetchHost()
+  }, [room?.host_id])
 
-  // No need for local auth - using centralized auth store
+  useEffect(() => {
+    if (!room?.guest_id) {
+      setGuestUsername('Waiting...')
+      setGuestAvatarUrl(null)
+      return
+    }
+
+    console.log('[Lobby] Guest joined! Fetching guest info:', room.guest_id)
+    const fetchGuest = async () => {
+      const { data } = await supabase
+        .from('users')
+        .select('username, avatar_url')
+        .eq('id', room.guest_id!)
+        .single()
+      if (data?.username) {
+        console.log('[Lobby] Guest username:', data.username)
+        setGuestUsername(data.username)
+      }
+      if (data?.avatar_url) setGuestAvatarUrl(data.avatar_url)
+    }
+    fetchGuest()
+  }, [room?.guest_id])
 
   useEffect(() => {
     fetchRoom().then(() => setLoading(false))
   }, [fetchRoom])
 
-  useEffect(() => {
-    if (room) {
-      fetchUsernames()
-    }
-  }, [room, fetchUsernames])
-
   // Real-time subscription
   useEffect(() => {
     if (!roomCode) return
 
+    console.log('[Lobby] Setting up real-time subscription for room:', roomCode)
     const channel = supabase
       .channel(`room:${roomCode}`)
       .on(
@@ -148,7 +147,9 @@ function LobbyContent() {
           filter: `code=eq.${roomCode}`,
         },
         (payload) => {
+          console.log('[Lobby] Real-time update received:', payload.eventType)
           const newRoom = payload.new as Room
+          console.log('[Lobby] Updated room - status:', newRoom.status, 'guest_id:', newRoom.guest_id, 'players:', newRoom.players?.length)
           setRoom(newRoom)
           
           if (newRoom.status === 'playing') {
@@ -157,6 +158,7 @@ function LobbyContent() {
         }
       )
       .subscribe((status) => {
+        console.log('[Lobby] Subscription status:', status)
         setConnected(status === 'SUBSCRIBED')
       })
 
@@ -164,6 +166,37 @@ function LobbyContent() {
       supabase.removeChannel(channel)
     }
   }, [roomCode, router])
+
+  // Polling fallback — re-fetch room every 3s in case real-time isn't working
+  useEffect(() => {
+    if (!roomCode || !room) return
+
+    const interval = setInterval(async () => {
+      const { data } = await supabase
+        .from('multiplayer_rooms')
+        .select('*')
+        .eq('code', roomCode)
+        .single()
+
+      if (data) {
+        const updated = data as Room
+        // Only update if something actually changed
+        if (
+          updated.guest_id !== room.guest_id ||
+          updated.status !== room.status ||
+          updated.players?.length !== room.players?.length
+        ) {
+          console.log('[Lobby] Poll detected change - guest:', updated.guest_id, 'status:', updated.status)
+          setRoom(updated)
+          if (updated.status === 'playing') {
+            router.push(`/multiplayer/game?code=${roomCode}`)
+          }
+        }
+      }
+    }, 3000)
+
+    return () => clearInterval(interval)
+  }, [roomCode, room?.guest_id, room?.status, room?.players?.length, router])
 
   const handleCopyCode = () => {
     if (roomCode) {
