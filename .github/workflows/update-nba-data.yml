@@ -2,10 +2,8 @@ name: Update NBA Data
 
 on:
   schedule:
-    # Run every Monday at 6 AM UTC
-    - cron: '0 6 * * 1'
-  workflow_dispatch: # Allow manual trigger
-
+    - cron: '0 16 * * 6'
+  workflow_dispatch: 
 jobs:
   update-data:
     runs-on: ubuntu-latest
