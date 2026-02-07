@@ -48,15 +48,25 @@ app = FastAPI(
 )
 
 # CORS configuration
+# Allow frontend URL from environment variable or default to localhost
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "https://garu.vercel.app",  # Production URL
 ]
+
+# Add production frontend URL if specified
+if FRONTEND_URL and FRONTEND_URL not in origins:
+    origins.append(FRONTEND_URL)
+
+# Also allow any vercel app preview deployments
+if os.getenv("ENVIRONMENT") == "production":
+    origins.append("https://*.vercel.app")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=origins if os.getenv("ENVIRONMENT") != "production" else [FRONTEND_URL, "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
