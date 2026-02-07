@@ -165,9 +165,7 @@ export function Header() {
       <div className="flex items-center justify-between px-4 py-3 md:px-8 md:ml-20">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-electric-lime to-green-600 flex items-center justify-center">
-            <BasketballIcon size={24} className="text-deep-void" />
-          </div>
+          <img src="/garu-logo.png" alt="GARU" className="w-10 h-10 object-contain" />
           <span className="font-display font-bold text-xl hidden sm:block">
             GARU
           </span>

@@ -88,8 +88,8 @@ export function BottomNav() {
       {/* Desktop Side Navigation */}
       <nav className="hidden md:flex fixed left-0 top-0 bottom-0 z-50 w-20 flex-col items-center py-6 glass border-r border-surface/50">
         <div className="mb-8">
-          <Link href="/" className="text-2xl font-display font-bold text-electric-lime">
-            G
+          <Link href="/" className="block">
+            <img src="/garu-logo.png" alt="GARU" className="w-12 h-12 object-contain" />
           </Link>
         </div>
         <ul className="flex flex-col gap-4 flex-1">

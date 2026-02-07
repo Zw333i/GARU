@@ -12,6 +12,10 @@ export const metadata: Metadata = {
   keywords: ['NBA', 'basketball', 'stats', 'trivia', 'draft', 'fantasy'],
   authors: [{ name: 'GARU Team' }],
   manifest: '/manifest.json',
+  icons: {
+    icon: '/garu-logo.png',
+    apple: '/garu-logo.png',
+  },
   openGraph: {
     title: 'GARU - The NBA Knowledge Arena',
     description: 'Test your NBA knowledge and battle in draft challenges',
