@@ -504,11 +504,12 @@ export async function cleanupOldRooms(): Promise<void> {
 export interface GameScore {
   id?: string
   user_id: string
-  game_type: 'whos-that' | 'blind-comparison' | 'the-journey' | 'draft-arena' | 'stat-attack'
+  game_type: 'whos-that' | 'blind-comparison' | 'the-journey' | 'draft-arena' | 'stat-attack' | 'multiplayer-whos-that' | 'multiplayer-the-journey'
   score: number
   questions_answered?: number
   correct_answers?: number
   time_taken?: number  // in seconds
+  metadata?: Record<string, any>  // extra data like room code, placement, etc.
   created_at?: string
 }
 

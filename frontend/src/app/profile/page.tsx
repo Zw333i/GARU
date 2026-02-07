@@ -384,11 +384,36 @@ export default function ProfilePage() {
               <span className="text-muted">Best Streak</span>
               <span className="font-bold">{userStats.bestStreak} days</span>
             </div>
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center mb-2">
               <span className="text-muted">Daily Challenges</span>
               <span className="font-bold">{userStats.dailyChallenges}/30</span>
             </div>
           </div>
+
+          {/* Multiplayer Win Rate */}
+          {(() => {
+            const mpGames = gameHistory.filter(g => g.gameType.startsWith('multiplayer-'))
+            if (mpGames.length === 0) return null
+            const mpWins = mpGames.filter(g => g.questionsAnswered > 0 && g.correctAnswers >= g.questionsAnswered / 2).length
+            const mpWinRate = Math.round((mpWins / mpGames.length) * 100)
+            return (
+              <div className="mt-4 pt-4 border-t border-surface">
+                <p className="text-xs text-muted uppercase tracking-wider mb-2">Multiplayer</p>
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-muted">MP Games</span>
+                  <span className="font-bold">{mpGames.length}</span>
+                </div>
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-muted">MP Wins</span>
+                  <span className="font-bold text-electric-lime">{mpWins}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-muted">MP Win Rate</span>
+                  <span className="font-bold text-hot-pink">{mpWinRate}%</span>
+                </div>
+              </div>
+            )
+          })()}
         </motion.div>
 
         {/* Achievements */}
@@ -462,7 +487,10 @@ export default function ProfilePage() {
                   'blind-comparison': 'Blind Comparison',
                   'stat-attack': 'Stat Attack',
                   'draft-arena': 'Draft Arena',
+                  'multiplayer-whos-that': "MP - Who's That?",
+                  'multiplayer-the-journey': 'MP - The Journey',
                 }
+                const isMultiplayer = game.gameType.startsWith('multiplayer-')
                 const isWin = game.questionsAnswered > 0 && game.correctAnswers >= game.questionsAnswered / 2
                 const timeAgo = getTimeAgo(game.createdAt)
                 
@@ -478,7 +506,14 @@ export default function ProfilePage() {
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium truncate">{gameNames[game.gameType] || game.gameType}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="font-medium truncate">{gameNames[game.gameType] || game.gameType}</p>
+                        {isMultiplayer && (
+                          <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded bg-hot-pink/20 text-hot-pink">
+                            MULTI
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-muted">
                         {game.correctAnswers}/{game.questionsAnswered} correct • {game.score} pts
                       </p>

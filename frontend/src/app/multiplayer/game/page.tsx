@@ -69,6 +69,34 @@ function GameContent() {
   const answeredRef = React.useRef(answered)
   answeredRef.current = answered
 
+  // Ref for auto-advance timer so Enter key can cancel it
+  const autoAdvanceTimerRef = React.useRef<number | null>(null)
+
+  // Global keyboard handler for Enter key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter') return
+
+      // If showing result, advance to next question immediately
+      if (showResult && room) {
+        e.preventDefault()
+        // Cancel auto-advance timer
+        if (autoAdvanceTimerRef.current) {
+          clearTimeout(autoAdvanceTimerRef.current)
+          autoAdvanceTimerRef.current = null
+        }
+        if (currentQ < room.questions.length - 1) {
+          nextQuestion()
+        } else {
+          finishGame()
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showResult, room, currentQ])
+
   // Fetch room
   const fetchRoom = useCallback(async () => {
     if (!roomCode) return
@@ -231,14 +259,14 @@ function GameContent() {
       .update({ players: updatedPlayers })
       .eq('id', room.id)
 
-    // Auto advance after showing result
-    setTimeout(() => {
+    // Set up for manual advance via Enter key (auto-advance after 5s as fallback)
+    autoAdvanceTimerRef.current = window.setTimeout(() => {
       if (currentQ < room.questions.length - 1) {
         nextQuestion()
       } else {
         finishGame()
       }
-    }, 2000)
+    }, 5000)
   }
 
   const nextQuestion = async () => {
@@ -353,17 +381,16 @@ function GameContent() {
             // Who's That - Show blurred image + stats
             <div>
               <h2 className="text-lg font-bold text-center mb-4">
-                Guess the player!
+                Name this player!
               </h2>
               
               <div className="flex justify-center mb-4">
                 <div 
                   className="w-40 h-40 rounded-2xl bg-gunmetal overflow-hidden"
-                  style={{ filter: showResult ? 'blur(0)' : 'blur(15px)' }}
                 >
                   <img
                     src={`https://cdn.nba.com/headshots/nba/latest/1040x760/${question.playerId}.png`}
-                    alt="Mystery Player"
+                    alt="NBA Player"
                     className="w-full h-full object-cover"
                   />
                 </div>
@@ -440,6 +467,7 @@ function GameContent() {
                   +{100 + Math.floor((timeLeft / room.timer_duration) * 50)} points!
                 </p>
               )}
+              <p className="text-xs text-muted mt-3 animate-pulse">Press Enter to continue</p>
             </motion.div>
           )}
         </AnimatePresence>

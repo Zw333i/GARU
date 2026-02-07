@@ -1,10 +1,12 @@
 'use client'
 
-import { useState, useEffect, useCallback, Suspense } from 'react'
+import React, { useState, useEffect, useCallback, Suspense, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { saveGameScore } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
+import { useSessionDataStore } from '@/store/sessionDataStore'
 import { TeamLogo } from '@/components/icons/TeamLogos'
 import confetti from 'canvas-confetti'
 import { 
@@ -52,6 +54,7 @@ interface Room {
   players: PlayerData[]
   questions: Question[]
   current_question: number
+  play_again_votes?: string[]
 }
 
 interface UserProfile {
@@ -71,6 +74,10 @@ function ResultsContent() {
   const [room, setRoom] = useState<Room | null>(null)
   const [profiles, setProfiles] = useState<Record<string, UserProfile>>({})
   const [loading, setLoading] = useState(true)
+  const [statsSaved, setStatsSaved] = useState(false)
+  const [playAgainVotes, setPlayAgainVotes] = useState<string[]>([])
+  const [hasVoted, setHasVoted] = useState(false)
+  const redirectingRef = useRef(false)
 
   const fetchRoom = useCallback(async () => {
     if (!roomCode) return
@@ -87,6 +94,15 @@ function ResultsContent() {
     }
 
     setRoom(data as Room)
+
+    // Initialize play again votes from room data
+    if (data.play_again_votes && Array.isArray(data.play_again_votes)) {
+      setPlayAgainVotes(data.play_again_votes)
+      const currentUser = useAuthStore.getState().user
+      if (currentUser && data.play_again_votes.includes(currentUser.id)) {
+        setHasVoted(true)
+      }
+    }
 
     // Fetch profiles for all players in the players array
     const playerIds = (data.players || []).map((p: PlayerData) => p.id).filter(Boolean)
@@ -123,16 +139,150 @@ function ResultsContent() {
           })
         }, 500)
       }
+
+      // Save multiplayer result to game_scores (once per game)
+      if (!statsSaved) {
+        setStatsSaved(true)
+        const myData = data.players.find((p: PlayerData) => p.id === currentUser.id)
+        if (myData) {
+          const gameTypeKey = `multiplayer-${data.game_type}` as 'multiplayer-whos-that' | 'multiplayer-the-journey'
+          const correctCount = myData.answers.filter((a: Answer) => a.correct).length
+          const totalTime = myData.answers.reduce((sum: number, a: Answer) => sum + a.timeTaken, 0)
+
+          // Save to database
+          await saveGameScore({
+            user_id: currentUser.id,
+            game_type: gameTypeKey,
+            score: myData.score,
+            correct_answers: correctCount,
+            questions_answered: data.question_count,
+            time_taken: totalTime,
+          })
+
+          // Update local session store
+          const { addGameToHistory, refreshStats } = useSessionDataStore.getState()
+          addGameToHistory({
+            id: `mp-${data.code}-${currentUser.id}`,
+            gameType: gameTypeKey,
+            score: myData.score,
+            correctAnswers: correctCount,
+            questionsAnswered: data.question_count,
+            timeTaken: totalTime,
+            createdAt: new Date().toISOString(),
+          })
+          // Refresh stats from DB to get accurate win/loss counts
+          await refreshStats()
+        }
+      }
     }
-  }, [roomCode, router])
+  }, [roomCode, router, statsSaved])
 
   useEffect(() => {
     // No need for local auth - using centralized auth store
     fetchRoom()
   }, [fetchRoom])
 
+  // Real-time subscription for play again votes
+  useEffect(() => {
+    if (!roomCode) return
+
+    const channel = supabase
+      .channel(`results:${roomCode}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'multiplayer_rooms',
+          filter: `code=eq.${roomCode}`,
+        },
+        (payload) => {
+          const updatedRoom = payload.new as Room
+          
+          // Track play again votes
+          if (updatedRoom.play_again_votes) {
+            setPlayAgainVotes(updatedRoom.play_again_votes)
+          }
+
+          // If room was reset to waiting, redirect all players to lobby
+          if (updatedRoom.status === 'waiting' && !redirectingRef.current) {
+            redirectingRef.current = true
+            router.push(`/multiplayer/lobby?code=${roomCode}`)
+          }
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [roomCode, router])
+
+  // Polling fallback for play again votes
+  useEffect(() => {
+    if (!roomCode || !room) return
+
+    const interval = setInterval(async () => {
+      const { data } = await supabase
+        .from('multiplayer_rooms')
+        .select('play_again_votes, status')
+        .eq('code', roomCode)
+        .single()
+
+      if (data) {
+        if (data.play_again_votes) {
+          setPlayAgainVotes(data.play_again_votes)
+        }
+        if (data.status === 'waiting' && !redirectingRef.current) {
+          redirectingRef.current = true
+          router.push(`/multiplayer/lobby?code=${roomCode}`)
+        }
+      }
+    }, 3000)
+
+    return () => clearInterval(interval)
+  }, [roomCode, room?.id, router])
+
+  // Check if all players have voted to play again → reset room
+  useEffect(() => {
+    if (!room || !user || playAgainVotes.length === 0) return
+    
+    const totalPlayers = room.players?.length || 0
+    if (playAgainVotes.length >= totalPlayers && totalPlayers > 0) {
+      // All players voted — host resets the room
+      if (user.id === room.host_id && !redirectingRef.current) {
+        const resetRoom = async () => {
+          redirectingRef.current = true
+          // Reset the room: clear questions, scores, and set status back to waiting
+          const resetPlayers = room.players.map(p => ({
+            id: p.id,
+            score: 0,
+            answers: [],
+            username: profiles[p.id]?.username || '',
+          }))
+
+          await supabase
+            .from('multiplayer_rooms')
+            .update({
+              status: 'waiting',
+              questions: null,
+              current_question: 0,
+              play_again_votes: [],
+              players: resetPlayers,
+            })
+            .eq('id', room.id)
+
+          // Host navigates to lobby
+          router.push(`/multiplayer/lobby?code=${roomCode}&host=true`)
+        }
+        resetRoom()
+      }
+      // Non-host players will be redirected via real-time/polling when status changes to 'waiting'
+    }
+  }, [playAgainVotes, room, user, profiles, roomCode, router])
+
   const playAgain = async () => {
-    if (!room || !user) return
+    if (!room || !user || hasVoted) return
 
     // Verify session
     const { data: sessionData } = await supabase.auth.getSession()
@@ -141,35 +291,24 @@ function ResultsContent() {
       return
     }
 
-    // Generate proper room code
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-    let newCode = ''
-    for (let i = 0; i < 6; i++) {
-      newCode += chars.charAt(Math.floor(Math.random() * chars.length))
-    }
+    setHasVoted(true)
 
-    const { data: newRoom, error } = await supabase
+    // Re-fetch current votes from DB to avoid race conditions
+    const { data: freshRoom } = await supabase
       .from('multiplayer_rooms')
-      .insert({
-        code: newCode,
-        host_id: user.id,
-        game_type: room.game_type,
-        question_count: room.question_count,
-        timer_duration: room.timer_duration,
-        status: 'waiting',
-        players: [{ 
-          id: user.id, 
-          score: 0, 
-          answers: [],
-          username: user.user_metadata?.name || 'Host',
-        }],
-        current_question: 0,
-      })
-      .select()
+      .select('play_again_votes')
+      .eq('id', room.id)
       .single()
 
-    if (!error && newRoom) {
-      router.push(`/multiplayer/lobby?code=${newCode}&host=true`)
+    const currentVotes: string[] = (freshRoom?.play_again_votes as string[]) || []
+    if (!currentVotes.includes(user.id)) {
+      const newVotes = [...currentVotes, user.id]
+      setPlayAgainVotes(newVotes)
+
+      await supabase
+        .from('multiplayer_rooms')
+        .update({ play_again_votes: newVotes })
+        .eq('id', room.id)
     }
   }
 
@@ -366,9 +505,19 @@ function ResultsContent() {
         >
           <button
             onClick={playAgain}
-            className="w-full py-4 bg-electric-lime text-gunmetal font-bold rounded-xl hover:bg-green-400 transition-colors"
+            disabled={hasVoted}
+            className={`w-full py-4 font-bold rounded-xl transition-colors ${
+              hasVoted 
+                ? 'bg-electric-lime/50 text-gunmetal cursor-default' 
+                : 'bg-electric-lime text-gunmetal hover:bg-green-400'
+            }`}
           >
-            Play Again
+            {hasVoted 
+              ? `Play Again (${playAgainVotes.length}/${room.players?.length || 0}) — Waiting...`
+              : playAgainVotes.length > 0
+                ? `Play Again (${playAgainVotes.length}/${room.players?.length || 0})`
+                : 'Play Again'
+            }
           </button>
           <button
             onClick={backToMenu}

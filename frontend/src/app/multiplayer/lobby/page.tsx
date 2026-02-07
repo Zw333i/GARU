@@ -1,9 +1,10 @@
 'use client'
 
-import { useState, useEffect, useCallback, Suspense } from 'react'
+import React, { useState, useEffect, useCallback, Suspense } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { api } from '@/lib/api'
 import { useAuthStore } from '@/store/authStore'
 import { QRCodeSVG } from 'qrcode.react'
 import { 
@@ -55,6 +56,16 @@ function LobbyContent() {
   const [connected, setConnected] = useState(false)
   const [playerProfiles, setPlayerProfiles] = useState<Record<string, { username: string; avatar_url: string | null }>>({})
 
+  // Track whether we've already started redirecting
+  const redirectingRef = React.useRef(false)
+
+  const redirectToGame = useCallback(() => {
+    if (redirectingRef.current || !roomCode) return
+    redirectingRef.current = true
+    console.log('[Lobby] Redirecting to game page...')
+    router.push(`/multiplayer/game?code=${roomCode}`)
+  }, [roomCode, router])
+
   // Fetch room data
   const fetchRoom = useCallback(async () => {
     if (!roomCode) return
@@ -82,9 +93,9 @@ function LobbyContent() {
 
     // If game started, redirect to game
     if (data.status === 'playing') {
-      router.push(`/multiplayer/game?code=${roomCode}`)
+      redirectToGame()
     }
-  }, [roomCode, router])
+  }, [roomCode, redirectToGame])
 
   // Fetch profiles for all players in the room
   useEffect(() => {
@@ -141,7 +152,7 @@ function LobbyContent() {
           setRoom(newRoom)
           
           if (newRoom.status === 'playing') {
-            router.push(`/multiplayer/game?code=${roomCode}`)
+            redirectToGame()
           }
         }
       )
@@ -153,7 +164,7 @@ function LobbyContent() {
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [roomCode, router])
+  }, [roomCode, redirectToGame])
 
   // Polling fallback — re-fetch room every 3s in case real-time isn't working
   useEffect(() => {
@@ -176,14 +187,14 @@ function LobbyContent() {
           console.log('[Lobby] Poll detected change - players:', updated.players?.length, 'status:', updated.status)
           setRoom(updated)
           if (updated.status === 'playing') {
-            router.push(`/multiplayer/game?code=${roomCode}`)
+            redirectToGame()
           }
         }
       }
     }, 3000)
 
     return () => clearInterval(interval)
-  }, [roomCode, room?.status, room?.players?.length, router])
+  }, [roomCode, room?.status, room?.players?.length, redirectToGame])
 
   const handleCopyCode = () => {
     if (roomCode) {
@@ -528,7 +539,23 @@ async function generateQuestions(gameType: string, count: number): Promise<any[]
   }
 
   if (gameType === 'the-journey') {
-    // Hardcoded journey data
+    // Fetch journey players from database via backend API
+    try {
+      const response = await api.getJourneyPlayers(Math.max(count * 2, 30), 2)
+      if (response?.players && response.players.length > 0) {
+        const shuffled = [...response.players].sort(() => Math.random() - 0.5)
+        return shuffled.slice(0, count).map((p, i) => ({
+          id: i,
+          teams: p.teams,
+          answer: p.name,
+          playerId: p.id,
+        }))
+      }
+    } catch (err) {
+      console.error('[Lobby] Failed to fetch journey players from API, using fallback:', err)
+    }
+
+    // Fallback hardcoded journey data (in case API is down)
     const journeys = [
       { teams: ['CLE', 'MIA', 'CLE', 'LAL'], answer: 'LeBron James', id: 2544 },
       { teams: ['OKC', 'GSW', 'BKN', 'PHX'], answer: 'Kevin Durant', id: 201142 },
