@@ -52,17 +52,29 @@ function generateRoomCode(): string {
 // Ensure user exists in public.users table (FK requirement)
 async function ensureUserExists(userId: string): Promise<boolean> {
   try {
-    const { data } = await supabase
+    console.log('[Multiplayer] Checking if user exists:', userId)
+    const { data, error: selectError } = await supabase
       .from('users')
       .select('id')
       .eq('id', userId)
       .single()
 
-    if (data) return true
+    if (selectError) {
+      console.log('[Multiplayer] User lookup error (expected if new):', selectError.code)
+    }
+
+    if (data) {
+      console.log('[Multiplayer] User exists in public.users')
+      return true
+    }
 
     // User doesn't exist — create from auth data
+    console.log('[Multiplayer] User not found, creating...')
     const { data: authData } = await supabase.auth.getUser()
-    if (!authData?.user) return false
+    if (!authData?.user) {
+      console.error('[Multiplayer] No auth user found')
+      return false
+    }
 
     const { error: insertError } = await supabase
       .from('users')
@@ -74,11 +86,13 @@ async function ensureUserExists(userId: string): Promise<boolean> {
 
     // Ignore duplicate key errors (race condition)
     if (insertError && insertError.code !== '23505') {
-      console.error('Failed to create user record:', insertError)
+      console.error('[Multiplayer] Failed to create user:', insertError)
       return false
     }
+    console.log('[Multiplayer] User created successfully')
     return true
-  } catch {
+  } catch (err) {
+    console.error('[Multiplayer] ensureUserExists error:', err)
     return false
   }
 }
@@ -127,23 +141,31 @@ function MultiplayerContent() {
 
     try {
       // 1. Verify active Supabase auth session (required for RLS)
+      console.log('[Multiplayer] Step 1: Checking auth session...')
       const { data: sessionData } = await supabase.auth.getSession()
       if (!sessionData?.session) {
+        console.error('[Multiplayer] No active session')
         setError('Your session has expired. Please sign in again.')
         setLoading(false)
         return
       }
+      console.log('[Multiplayer] Session active for:', sessionData.session.user.email)
 
       // 2. Ensure user exists in public.users table (FK requirement)
+      console.log('[Multiplayer] Step 2: Ensuring user exists...')
       const userExists = await ensureUserExists(user.id)
       if (!userExists) {
+        console.error('[Multiplayer] User does not exist and could not be created')
         setError('Account setup issue. Try signing out and back in.')
         setLoading(false)
         return
       }
 
       // 3. Create room
+      console.log('[Multiplayer] Step 3: Creating room...')
       const roomCode = generateRoomCode()
+      console.log('[Multiplayer] Room code:', roomCode, 'Game:', selectedGame)
+      
       const { data, error: createError } = await supabase
         .from('multiplayer_rooms')
         .insert({
@@ -163,7 +185,7 @@ function MultiplayerContent() {
         .select()
 
       if (createError) {
-        console.error('Database error creating room:', createError)
+        console.error('[Multiplayer] Room creation failed:', createError.code, createError.message, createError.details, createError.hint)
         if (createError.code === '42P01') {
           setError('Multiplayer is not set up yet. Please contact the admin to run the database migration.')
         } else if (createError.code === '42501' || createError.message?.includes('permission')) {

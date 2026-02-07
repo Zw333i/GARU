@@ -49,7 +49,7 @@ export function ShotDistributionChart({ selectedPlayer }: ShotDistributionChartP
     const fetchDistribution = async () => {
       setIsLoading(true)
       try {
-        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+        const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/+$/, '')
         const res = await fetch(`${API_URL}/api/stats/shot-distribution/${selectedPlayer.id}`)
         if (res.ok) {
           const data = await res.json()

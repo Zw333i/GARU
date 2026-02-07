@@ -14,8 +14,8 @@ import { BasketballLoader } from '@/components/ui/BasketballLoader'
 import { usePlayersStore, CachedPlayer } from '@/store/playersStore'
 import { useAuthStore } from '@/store/authStore'
 
-// API URL from environment
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+// API URL from environment (strip trailing slash to prevent double-slash)
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/+$/, '')
 
 // Player type for this page (alias to CachedPlayer)
 type Player = CachedPlayer

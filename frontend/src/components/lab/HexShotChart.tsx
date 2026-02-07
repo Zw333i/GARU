@@ -25,7 +25,7 @@ interface HexShotChartProps {
   selectedPlayer?: Player | null
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/+$/, '')
 
 // Hexagon zones matching Kirk Goldsberry style - proper NBA court alignment
 const ZONE_DEFINITIONS = [
