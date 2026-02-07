@@ -15,6 +15,7 @@ import {
   CheckIcon,
   ArrowLeftIcon
 } from '@/components/icons'
+import { BasketballLoader } from '@/components/ui/BasketballLoader'
 
 // Game options
 const GAMES = [
@@ -379,7 +380,7 @@ export default function MultiplayerPage() {
   return (
     <Suspense fallback={
       <div className="min-h-screen flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-electric-lime border-t-transparent rounded-full animate-spin" />
+        <BasketballLoader size="lg" text="Loading..." />
       </div>
     }>
       <MultiplayerContent />

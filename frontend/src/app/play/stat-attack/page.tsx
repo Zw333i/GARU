@@ -19,6 +19,7 @@ import { useKeyboardControls } from '@/hooks/useKeyboardControls'
 import { supabase, saveGameScore } from '@/lib/supabase'
 import { BasketballLoader } from '@/components/ui/BasketballLoader'
 import { usePlayersStore, CachedPlayer } from '@/store/playersStore'
+import { useSessionDataStore } from '@/store/sessionDataStore'
 
 // Stats to guess
 const statCategories = [
@@ -106,6 +107,8 @@ export default function StatAttackPage() {
           questions_answered: maxRounds,
           time_taken: duration
         })
+        // Refresh session cache so profile/stats reflect new data
+        await useSessionDataStore.getState().refreshStats()
       }
     } catch (err) {
       console.error('Error saving score:', err)

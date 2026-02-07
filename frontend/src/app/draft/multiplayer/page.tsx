@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { SwordsIcon, TrophyIcon, HeartIcon, ArrowLeftIcon, QRCodeIcon, UsersIcon, CopyIcon, CheckIcon } from '@/components/icons'
+import { BasketballLoader } from '@/components/ui/BasketballLoader'
 import { sounds } from '@/lib/sounds'
 import { useSettingsStore } from '@/store/settingsStore'
 import { useKeyboardControls } from '@/hooks/useKeyboardControls'
@@ -184,7 +185,7 @@ export default function MultiplayerDraftPage() {
   // Create room (host)
   const handleCreateRoom = async () => {
     if (!user) {
-      setError('Please sign in to create a room')
+      setError('Sign in to create a room')
       return
     }
 
@@ -210,12 +211,12 @@ export default function MultiplayerDraftPage() {
   const handleJoinRoom = async (code?: string) => {
     const codeToUse = code || joinInput
     if (!user) {
-      setError('Please sign in to join a room')
+      setError('Sign in to join a room')
       return
     }
 
     if (!codeToUse || codeToUse.length !== 6) {
-      setError('Please enter a valid 6-character code')
+      setError('Enter a valid 6-character code')
       return
     }
 
@@ -301,10 +302,7 @@ export default function MultiplayerDraftPage() {
   if (loading && !room) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin w-12 h-12 border-4 border-electric-lime border-t-transparent rounded-full mx-auto mb-4" />
-          <p className="text-muted">Loading...</p>
-        </div>
+        <BasketballLoader size="lg" text="Loading..." />
       </div>
     )
   }

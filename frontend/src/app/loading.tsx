@@ -1,5 +1,9 @@
-import { LoadingScreen } from '@/components/ui/Loading'
+import { BasketballLoader } from '@/components/ui/BasketballLoader'
 
 export default function Loading() {
-  return <LoadingScreen text="Loading GARU..." />
+  return (
+    <div className="min-h-screen flex items-center justify-center">
+      <BasketballLoader size="lg" text="Loading GARU..." />
+    </div>
+  )
 }

@@ -13,6 +13,7 @@ import {
   HandshakeIcon, 
   SadFaceIcon 
 } from '@/components/icons'
+import { BasketballLoader } from '@/components/ui/BasketballLoader'
 
 interface Answer {
   questionId: number
@@ -157,10 +158,7 @@ function ResultsContent() {
   if (loading || !room) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-electric-lime border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-muted">Loading results...</p>
-        </div>
+        <BasketballLoader size="lg" text="Loading results..." />
       </div>
     )
   }
@@ -361,7 +359,7 @@ export default function ResultsPage() {
   return (
     <Suspense fallback={
       <div className="min-h-screen flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-electric-lime border-t-transparent rounded-full animate-spin" />
+        <BasketballLoader size="lg" text="Loading..." />
       </div>
     }>
       <ResultsContent />

@@ -10,6 +10,7 @@ import { useRolePlayers, FALLBACK_ROLE_PLAYERS, GamePlayer } from '@/hooks/useGa
 import { supabase, saveGameScore, incrementRolePlayerGuesses } from '@/lib/supabase'
 import { SearchIcon, CheckIcon, XIcon, ArrowRightIcon, ArrowLeftIcon } from '@/components/icons'
 import { BasketballLoader } from '@/components/ui/BasketballLoader'
+import { useSessionDataStore } from '@/store/sessionDataStore'
 
 // Timer icon component
 const TimerIcon = ({ size = 24 }: { size?: number }) => (
@@ -23,8 +24,8 @@ const TimerIcon = ({ size = 24 }: { size?: number }) => (
 const checkGuess = (guess: string, playerName: string): boolean => {
   const guessLower = guess.toLowerCase().trim()
   
-  // Require at least 2 characters for a valid guess
-  if (guessLower.length < 2) return false
+  // Require at least 3 characters for a valid guess
+  if (guessLower.length < 3) return false
   
   const nameParts = playerName.toLowerCase().split(' ')
   const firstName = nameParts[0]
@@ -225,6 +226,8 @@ export default function WhosThatPage() {
         if (finalCorrect > 0) {
           await incrementRolePlayerGuesses(user.id, finalCorrect)
         }
+        // Refresh session cache so profile/stats reflect new data
+        await useSessionDataStore.getState().refreshStats()
       }
     } catch (err) {
       console.warn('Failed to save score:', err)
@@ -235,10 +238,8 @@ export default function WhosThatPage() {
     if (round >= questionCount) {
       setGameOver(true)
       if (soundEnabled) sounds.victory()
-      // Save score when game ends
-      const finalCorrect = isCorrect ? correctCount + 1 : correctCount
-      const finalScore = score
-      saveScore(finalScore, finalCorrect)
+      // Save score when game ends — correctCount already updated by handleGuess
+      saveScore(score, correctCount)
       return
     }
     
@@ -557,10 +558,10 @@ export default function WhosThatPage() {
             </div>
 
             <p className="text-muted mb-6">
-              {score >= questionCount * 80 ? '🏆 Amazing! You really know your players!' : 
-               score >= questionCount * 50 ? '🌟 Great job! Keep practicing!' : 
-               score >= questionCount * 30 ? '📚 Not bad! Study those role players!' : 
-               '💪 Keep at it! Practice makes perfect!'}
+              {score >= questionCount * 80 ? 'Ball Knower!' : 
+               score >= questionCount * 50 ? 'Great job! Keep practicing!' : 
+               score >= questionCount * 30 ? 'Casual? hmmm...' : 
+               'Keep at it! Practice makes perfect!'}
             </p>
             
             <div className="flex gap-4 justify-center">

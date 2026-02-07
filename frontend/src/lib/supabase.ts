@@ -545,9 +545,15 @@ export async function saveGameScore(score: Omit<GameScore, 'id' | 'created_at'>)
     
     // Track game-specific achievements
     if (score.game_type === 'draft-arena') {
-      // Track draft battle wins
       if ((score.correct_answers || 0) >= (score.questions_answered || 0) / 2) {
         await updateAchievementProgress(score.user_id, 'draft_king', 1)
+      }
+    }
+    
+    // Track role player guesses for guess-based games
+    if (['whos-that', 'the-journey', 'blind-comparison', 'stat-attack'].includes(score.game_type)) {
+      if ((score.correct_answers || 0) > 0) {
+        await updateAchievementProgress(score.user_id, 'role_player_expert', score.correct_answers || 0)
       }
     }
     
@@ -556,6 +562,8 @@ export async function saveGameScore(score: Omit<GameScore, 'id' | 'created_at'>)
     return null
   }
 }
+
+import { calculateLevel } from '@/lib/xpUtils'
 
 // Update user stats after a game
 export async function updateUserStats(
@@ -576,8 +584,8 @@ export async function updateUserStats(
     
     // Calculate new values
     const newXP = (user.xp || 0) + xpGained
-    const newLevel = Math.floor(newXP / 100) + 1  // Level up every 100 XP
-    const isWin = correctAnswers >= totalQuestions / 2
+    const newLevel = calculateLevel(newXP) // Use proper scaling XP system
+    const isWin = totalQuestions > 0 && correctAnswers >= totalQuestions / 2
     const newWins = (user.wins || 0) + (isWin ? 1 : 0)
     const newLosses = (user.losses || 0) + (isWin ? 0 : 1)
     const newStreak = isWin ? (user.current_streak || 0) + 1 : 0

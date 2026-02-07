@@ -168,3 +168,128 @@ body {
     transform: rotate(360deg);
   }
 }
+
+/* Basketball bounce animation */
+@keyframes basketballBounce {
+  0% {
+    top: 0;
+    animation-timing-function: ease-in;
+  }
+  16% {
+    top: 63%;
+    animation-timing-function: ease-out;
+  }
+  32% {
+    top: 17%;
+    animation-timing-function: ease-in;
+  }
+  48% {
+    top: 63%;
+    animation-timing-function: ease-out;
+  }
+  62% {
+    top: 20%;
+    animation-timing-function: ease-in;
+  }
+  78% {
+    top: 63%;
+    animation-timing-function: ease-out;
+  }
+  85% {
+    top: 17%;
+    animation-timing-function: ease-in;
+  }
+  90% {
+    top: 63%;
+    animation-timing-function: ease-out;
+  }
+  100% {
+    top: 0;
+    animation-timing-function: ease-in;
+  }
+}
+
+@keyframes basketballShadowSm {
+  0%, 100% {
+    width: 10px;
+    margin-left: -5px;
+    background-color: rgba(173, 255, 47, 0.2);
+  }
+  16%, 48%, 78%, 90% {
+    width: 50px;
+    margin-left: -25px;
+    background-color: rgba(173, 255, 47, 0.6);
+  }
+  32%, 85% {
+    width: 30px;
+    margin-left: -15px;
+    background-color: rgba(173, 255, 47, 0.4);
+  }
+  62% {
+    width: 40px;
+    margin-left: -20px;
+    background-color: rgba(173, 255, 47, 0.4);
+  }
+}
+
+@keyframes basketballShadowMd {
+  0%, 100% {
+    width: 10px;
+    margin-left: -5px;
+    background-color: rgba(173, 255, 47, 0.2);
+  }
+  16%, 48%, 78%, 90% {
+    width: 75px;
+    margin-left: -37.5px;
+    background-color: rgba(173, 255, 47, 0.6);
+  }
+  32%, 85% {
+    width: 40px;
+    margin-left: -20px;
+    background-color: rgba(173, 255, 47, 0.4);
+  }
+  62% {
+    width: 55px;
+    margin-left: -27.5px;
+    background-color: rgba(173, 255, 47, 0.4);
+  }
+}
+
+@keyframes basketballShadowLg {
+  0%, 100% {
+    width: 10px;
+    margin-left: -5px;
+    background-color: rgba(173, 255, 47, 0.2);
+  }
+  16%, 48%, 78%, 90% {
+    width: 100px;
+    margin-left: -50px;
+    background-color: rgba(173, 255, 47, 0.6);
+  }
+  32%, 85% {
+    width: 50px;
+    margin-left: -25px;
+    background-color: rgba(173, 255, 47, 0.4);
+  }
+  62% {
+    width: 70px;
+    margin-left: -35px;
+    background-color: rgba(173, 255, 47, 0.4);
+  }
+}
+
+.basketball-ball {
+  animation: basketballBounce 3.95s forwards infinite;
+}
+
+.basketball-shadow-sm {
+  animation: basketballShadowSm 3.85s forwards infinite;
+}
+
+.basketball-shadow-md {
+  animation: basketballShadowMd 3.85s forwards infinite;
+}
+
+.basketball-shadow-lg {
+  animation: basketballShadowLg 3.85s forwards infinite;
+}

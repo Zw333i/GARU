@@ -12,6 +12,7 @@ import {
   HourglassIcon,
   CheckIcon
 } from '@/components/icons'
+import { BasketballLoader } from '@/components/ui/BasketballLoader'
 
 interface Player {
   id: string
@@ -215,10 +216,7 @@ function LobbyContent() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-electric-lime border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-muted">Loading lobby...</p>
-        </div>
+        <BasketballLoader size="lg" text="Loading lobby..." />
       </div>
     )
   }
@@ -455,7 +453,7 @@ export default function LobbyPage() {
   return (
     <Suspense fallback={
       <div className="min-h-screen flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-electric-lime border-t-transparent rounded-full animate-spin" />
+        <BasketballLoader size="lg" text="Loading..." />
       </div>
     }>
       <LobbyContent />

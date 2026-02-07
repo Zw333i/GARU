@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { TeamLogo } from '@/components/icons/TeamLogos'
 import { CheckIcon, XIcon } from '@/components/icons'
+import { BasketballLoader } from '@/components/ui/BasketballLoader'
 import { sounds } from '@/lib/sounds'
 import { useSettingsStore } from '@/store/settingsStore'
 
@@ -244,10 +245,7 @@ function GameContent() {
   if (loading || !room) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-electric-lime border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-muted">Loading game...</p>
-        </div>
+        <BasketballLoader size="lg" text="Loading game..." />
       </div>
     )
   }
@@ -417,7 +415,7 @@ export default function GamePage() {
   return (
     <Suspense fallback={
       <div className="min-h-screen flex items-center justify-center">
-        <div className="w-12 h-12 border-4 border-electric-lime border-t-transparent rounded-full animate-spin" />
+        <BasketballLoader size="lg" text="Loading..." />
       </div>
     }>
       <GameContent />

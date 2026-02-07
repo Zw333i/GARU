@@ -12,6 +12,7 @@ import {
   Tooltip,
 } from 'recharts'
 import { motion } from 'framer-motion'
+import { BasketballLoader } from '@/components/ui/BasketballLoader'
 
 interface PlayerStats {
   pts: number
@@ -242,8 +243,8 @@ export function SinglePlayerRadar({ player, className = '' }: SinglePlayerRadarP
 
   if (!mounted) {
     return (
-      <div className={`h-48 flex items-center justify-center text-muted ${className}`}>
-        Loading...
+      <div className={`h-48 flex items-center justify-center ${className}`}>
+        <BasketballLoader size="sm" text="" />
       </div>
     )
   }

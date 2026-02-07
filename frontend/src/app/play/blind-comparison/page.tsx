@@ -10,6 +10,7 @@ import { useKeyboardControls } from '@/hooks/useKeyboardControls'
 import { useStarPlayers, FALLBACK_STAR_PLAYERS, GamePlayer } from '@/hooks/useGamePlayers'
 import { supabase, saveGameScore } from '@/lib/supabase'
 import { BasketballLoader } from '@/components/ui/BasketballLoader'
+import { useSessionDataStore } from '@/store/sessionDataStore'
 
 // Silhouette image URL
 const SILHOUETTE_URL = 'https://th.bing.com/th/id/R.2855dc2b9d9f849e227dbe9f73642b27?rik=%2bcUVqCXHhW1S%2bA&riu=http%3a%2f%2fgetdrawings.com%2fimg%2fmale-silhouette-head-31.png&ehk=yxlY0knr%2bEmdM%2baGFVqzo0zaLgigbwObIl%2bXINZzWJ0%3d&risl=&pid=ImgRaw&r=0'
@@ -110,6 +111,8 @@ export default function BlindComparisonPage() {
           questions_answered: 5,
           time_taken: duration
         })
+        // Refresh session cache so profile/stats reflect new data
+        await useSessionDataStore.getState().refreshStats()
       }
     } catch (err) {
       console.error('Error saving score:', err)
@@ -160,7 +163,7 @@ export default function BlindComparisonPage() {
     const winner = aTotal >= bTotal ? 'A' : 'B'
     
     if (choice === winner) {
-      setScore(score + 100)
+      setScore(prev => prev + 100)
       setCorrectCount(prev => prev + 1)
       if (soundEnabled) sounds.correct()
     } else {

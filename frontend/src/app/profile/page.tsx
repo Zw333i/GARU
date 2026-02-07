@@ -7,6 +7,7 @@ import { signInWithGoogle, signOut, ACHIEVEMENTS, UserAchievement, supabase } fr
 import { useAuthStore } from '@/store/authStore'
 import { useSessionDataStore } from '@/store/sessionDataStore'
 import { getXPProgress } from '@/lib/xpUtils'
+import { BasketballLoader } from '@/components/ui/BasketballLoader'
 import {
   BasketballIcon,
   ChartIcon,
@@ -18,7 +19,8 @@ import {
   BabyIcon,
   CheckIcon,
   GamepadIcon,
-  ClockIcon
+  ClockIcon,
+  XIcon
 } from '@/components/icons'
 
 // Map achievement types to icons
@@ -31,15 +33,33 @@ const achievementIcons: Record<string, React.FC<{ size?: number; className?: str
   perfect_week: StarIcon,
 }
 
+// Helper for relative time display
+function getTimeAgo(dateStr: string): string {
+  const now = new Date()
+  const date = new Date(dateStr)
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+  
+  if (diffMins < 1) return 'Just now'
+  if (diffMins < 60) return `${diffMins}m ago`
+  if (diffHours < 24) return `${diffHours}h ago`
+  if (diffDays < 7) return `${diffDays}d ago`
+  return date.toLocaleDateString()
+}
+
 export default function ProfilePage() {
   // Use centralized auth and session data stores
   const { user, isAuthenticated, isLoading: authLoading } = useAuthStore()
   const { 
     userStats: sessionStats, 
     achievements: sessionAchievements,
+    gameHistory,
     isStatsLoaded, 
     isStatsLoading, 
-    fetchUserStats 
+    fetchUserStats,
+    refreshStats,
   } = useSessionDataStore()
 
   const loading = authLoading
@@ -174,10 +194,15 @@ export default function ProfilePage() {
 
   // Fetch stats when user is authenticated (uses session cache)
   useEffect(() => {
-    if (user && isAuthenticated && !isStatsLoaded && !isStatsLoading) {
-      fetchUserStats(user.id)
+    if (user && isAuthenticated) {
+      if (!isStatsLoaded && !isStatsLoading) {
+        fetchUserStats(user.id)
+      } else if (isStatsLoaded) {
+        // Always refresh stats on profile page visit to get latest data
+        refreshStats()
+      }
     }
-  }, [user, isAuthenticated, isStatsLoaded, isStatsLoading, fetchUserStats])
+  }, [user, isAuthenticated])
 
   const handleGoogleSignIn = async () => {
     try {
@@ -270,7 +295,9 @@ export default function ProfilePage() {
           {/* User Info */}
           <div className="flex-1 text-center md:text-left">
             {loading ? (
-              <p className="text-muted">Loading...</p>
+              <div className="flex justify-center md:justify-start">
+                <BasketballLoader size="sm" text="Loading profile..." />
+              </div>
             ) : isGuest ? (
               <>
                 <h1 className="text-2xl font-display font-bold mb-1">Guest Player</h1>
@@ -426,19 +453,61 @@ export default function ProfilePage() {
             <ClockIcon size={20} className="text-blue-400" /> Recent Activity
           </h2>
           
-          <div className="text-center py-8 text-muted">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gunmetal flex items-center justify-center">
-              <GamepadIcon size={32} className="text-muted" />
+          {gameHistory.length > 0 ? (
+            <div className="space-y-3">
+              {gameHistory.slice(0, 10).map((game) => {
+                const gameNames: Record<string, string> = {
+                  'whos-that': "Who's That?",
+                  'the-journey': 'The Journey',
+                  'blind-comparison': 'Blind Comparison',
+                  'stat-attack': 'Stat Attack',
+                  'draft-arena': 'Draft Arena',
+                }
+                const isWin = game.questionsAnswered > 0 && game.correctAnswers >= game.questionsAnswered / 2
+                const timeAgo = getTimeAgo(game.createdAt)
+                
+                return (
+                  <div key={game.id} className="flex items-center gap-4 bg-gunmetal rounded-xl p-4">
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                      isWin ? 'bg-electric-lime/20' : 'bg-hot-pink/20'
+                    }`}>
+                      {isWin ? (
+                        <CheckIcon size={20} className="text-electric-lime" />
+                      ) : (
+                        <XIcon size={20} className="text-hot-pink" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium truncate">{gameNames[game.gameType] || game.gameType}</p>
+                      <p className="text-xs text-muted">
+                        {game.correctAnswers}/{game.questionsAnswered} correct • {game.score} pts
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className={`font-bold text-sm ${isWin ? 'text-electric-lime' : 'text-hot-pink'}`}>
+                        {isWin ? 'W' : 'L'}
+                      </p>
+                      <p className="text-xs text-muted">{timeAgo}</p>
+                    </div>
+                  </div>
+                )
+              })}
             </div>
-            <p>No recent activity</p>
-            <p className="text-sm mt-1">Start playing to see your history here!</p>
-            <Link
-              href="/play"
-              className="inline-block mt-4 px-6 py-2 bg-electric-lime text-deep-void font-bold rounded-lg hover:bg-green-400 transition-colors"
-            >
-              Play Now
-            </Link>
-          </div>
+          ) : (
+            <div className="text-center py-8 text-muted">
+              <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gunmetal flex items-center justify-center">
+                <GamepadIcon size={32} className="text-muted" />
+              </div>
+              <p>No recent activity</p>
+              <p className="text-sm mt-1">Start playing to see your history here!</p>
+              <Link
+                href="/play"
+                className="inline-block mt-4 px-6 py-2 bg-electric-lime text-deep-void font-bold rounded-lg hover:bg-green-400 transition-colors"
+              >
+                Play Now
+              </Link>
+            </div>
+          )}
         </motion.div>
       </div>
     </div>

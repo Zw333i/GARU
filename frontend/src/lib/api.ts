@@ -8,6 +8,13 @@ interface FetchOptions extends RequestInit {
   params?: Record<string, string | number | boolean>
 }
 
+export interface JourneyPlayer {
+  id: number
+  name: string
+  teams: string[]
+  current_team: string
+}
+
 class ApiClient {
   private baseUrl: string
 
@@ -97,6 +104,10 @@ class ApiClient {
 
   async getTeamRoster(teamAbbr: string) {
     return this.request<{ team: string; players: any[]; count: number; season: string }>(`/api/players/team/${teamAbbr}`)
+  }
+
+  async getJourneyPlayers(count: number = 30, minTeams: number = 3) {
+    return this.request<{ players: JourneyPlayer[]; count: number; season: string }>(`/api/players/journey/players`, { params: { count, min_teams: minTeams } })
   }
 
   // Games

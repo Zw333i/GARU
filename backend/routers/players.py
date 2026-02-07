@@ -246,6 +246,26 @@ async def get_players_by_position(
     }
 
 
+@router.get("/journey/players")
+async def get_journey_game_players(
+    count: int = Query(30, le=50, description="Number of journey players to return"),
+    min_teams: int = Query(3, ge=2, le=5, description="Minimum teams played for"),
+):
+    """
+    Get players with their complete team history for The Journey game.
+    Returns players who have played for multiple teams.
+    """
+    from services.nba_service import get_journey_players
+    
+    players = get_journey_players(count, min_teams)
+    
+    return {
+        "players": players,
+        "count": len(players),
+        "season": CURRENT_SEASON
+    }
+
+
 @router.get("/{player_id}")
 async def get_player(player_id: int):
     """Get a specific player by ID"""

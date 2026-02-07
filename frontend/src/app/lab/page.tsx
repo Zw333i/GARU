@@ -147,7 +147,7 @@ export default function LabPage() {
     }
   }
 
-  // Loading state with ball bouncing animation
+  // Loading state with basketball loader
   if (playersLoading && !isLoaded) {
     return (
       <div className="min-h-screen px-4 py-6 md:px-8 lg:px-12">
@@ -156,58 +156,10 @@ export default function LabPage() {
             <LabIcon className="text-electric-lime" size={36} />
             The Lab
           </h1>
-          <p className="text-muted text-lg">Loading players from cache...</p>
+          <p className="text-muted text-lg">Loading players...</p>
         </section>
         <div className="flex justify-center py-12">
-          <div className="relative w-20 h-20 mx-auto">
-            {/* Basketball bouncing animation */}
-            <motion.div
-              animate={{ 
-                y: [0, -20, 0],
-                scale: [1, 0.9, 1],
-              }}
-              transition={{ 
-                duration: 0.6, 
-                repeat: Infinity,
-                ease: 'easeInOut'
-              }}
-              className="text-6xl"
-            >
-              🏀
-            </motion.div>
-            {/* Shadow */}
-            <motion.div
-              animate={{ 
-                scale: [1, 0.7, 1],
-                opacity: [0.3, 0.5, 0.3],
-              }}
-              transition={{ 
-                duration: 0.6, 
-                repeat: Infinity,
-                ease: 'easeInOut'
-              }}
-              className="absolute bottom-0 left-1/2 -translate-x-1/2 w-12 h-2 bg-electric-lime/30 rounded-full blur-sm"
-            />
-          </div>
-        </div>
-        {/* Skeleton loading placeholders */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">
-            <div className="glass rounded-2xl p-6 animate-pulse">
-              <div className="h-6 bg-surface rounded w-1/3 mb-4"></div>
-              <div className="h-64 bg-surface rounded"></div>
-            </div>
-          </div>
-          <div>
-            <div className="glass rounded-2xl p-6 animate-pulse">
-              <div className="h-6 bg-surface rounded w-1/2 mb-4"></div>
-              <div className="space-y-3">
-                <div className="h-4 bg-surface rounded"></div>
-                <div className="h-4 bg-surface rounded w-5/6"></div>
-                <div className="h-4 bg-surface rounded w-4/6"></div>
-              </div>
-            </div>
-          </div>
+          <BasketballLoader size="lg" text="Fetching player data..." />
         </div>
       </div>
     )
@@ -240,7 +192,7 @@ export default function LabPage() {
                 setShowResults(e.target.value.length >= 2)
               }}
               onFocus={() => query.length >= 2 && setShowResults(true)}
-              placeholder="Search for a player (min 2 chars)..."
+              placeholder="Search..."
               className="w-full px-4 py-3 pl-12 bg-gunmetal border border-surface rounded-xl text-ghost-white placeholder-muted focus:outline-none focus:border-electric-lime transition-colors"
             />
             <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" size={20} />

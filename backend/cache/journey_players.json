@@ -1,0 +1,365 @@
+{
+  "timestamp": "2026-02-07T12:45:42.828231",
+  "players": [
+    {
+      "id": 203944,
+      "name": "Julius Randle",
+      "teams": [
+        "LAL",
+        "NOP",
+        "NYK",
+        "MIN"
+      ],
+      "current_team": "MIN"
+    },
+    {
+      "id": 1628978,
+      "name": "Donte DiVincenzo",
+      "teams": [
+        "MIL",
+        "SAC",
+        "GSW",
+        "NYK",
+        "MIN"
+      ],
+      "current_team": "MIN"
+    },
+    {
+      "id": 201942,
+      "name": "DeMar DeRozan",
+      "teams": [
+        "TOR",
+        "SAS",
+        "CHI",
+        "SAC"
+      ],
+      "current_team": "SAC"
+    },
+    {
+      "id": 1628969,
+      "name": "Mikal Bridges",
+      "teams": [
+        "PHX",
+        "BKN",
+        "NYK"
+      ],
+      "current_team": "NYK"
+    },
+    {
+      "id": 1626220,
+      "name": "Royce O'Neale",
+      "teams": [
+        "UTA",
+        "BKN",
+        "PHX"
+      ],
+      "current_team": "PHX"
+    },
+    {
+      "id": 1630643,
+      "name": "Jay Huff",
+      "teams": [
+        "LAL",
+        "WAS",
+        "DEN",
+        "MEM",
+        "IND"
+      ],
+      "current_team": "IND"
+    },
+    {
+      "id": 1628971,
+      "name": "Bruce Brown",
+      "teams": [
+        "DET",
+        "BKN",
+        "DEN",
+        "IND",
+        "TOR",
+        "NOP",
+        "DEN"
+      ],
+      "current_team": "DEN"
+    },
+    {
+      "id": 1630696,
+      "name": "Dru Smith",
+      "teams": [
+        "MIA",
+        "BKN",
+        "MIA"
+      ],
+      "current_team": "MIA"
+    },
+    {
+      "id": 1627742,
+      "name": "Brandon Ingram",
+      "teams": [
+        "LAL",
+        "NOP",
+        "TOR"
+      ],
+      "current_team": "TOR"
+    },
+    {
+      "id": 1629638,
+      "name": "Nickeil Alexander-Walker",
+      "teams": [
+        "NOP",
+        "UTA",
+        "MIN",
+        "ATL"
+      ],
+      "current_team": "ATL"
+    },
+    {
+      "id": 203501,
+      "name": "Tim Hardaway Jr.",
+      "teams": [
+        "NYK",
+        "ATL",
+        "NYK",
+        "DAL",
+        "DET",
+        "DEN"
+      ],
+      "current_team": "DEN"
+    },
+    {
+      "id": 1630572,
+      "name": "Sandro Mamukelashvili",
+      "teams": [
+        "MIL",
+        "SAS",
+        "TOR"
+      ],
+      "current_team": "TOR"
+    },
+    {
+      "id": 203084,
+      "name": "Harrison Barnes",
+      "teams": [
+        "GSW",
+        "DAL",
+        "SAC",
+        "SAS"
+      ],
+      "current_team": "SAS"
+    },
+    {
+      "id": 1629750,
+      "name": "Javonte Green",
+      "teams": [
+        "BOS",
+        "CHI",
+        "NOP",
+        "CLE",
+        "DET"
+      ],
+      "current_team": "DET"
+    },
+    {
+      "id": 1631157,
+      "name": "Ryan Rollins",
+      "teams": [
+        "GSW",
+        "WAS",
+        "MIL"
+      ],
+      "current_team": "MIL"
+    },
+    {
+      "id": 1629014,
+      "name": "Anfernee Simons",
+      "teams": [
+        "POR",
+        "BOS",
+        "CHI"
+      ],
+      "current_team": "CHI"
+    },
+    {
+      "id": 1631222,
+      "name": "Jake LaRavia",
+      "teams": [
+        "MEM",
+        "SAC",
+        "LAL"
+      ],
+      "current_team": "LAL"
+    },
+    {
+      "id": 1631323,
+      "name": "Simone Fontecchio",
+      "teams": [
+        "UTA",
+        "DET",
+        "MIA"
+      ],
+      "current_team": "MIA"
+    },
+    {
+      "id": 1627739,
+      "name": "Kris Dunn",
+      "teams": [
+        "MIN",
+        "CHI",
+        "ATL",
+        "POR",
+        "UTA",
+        "LAC"
+      ],
+      "current_team": "LAC"
+    },
+    {
+      "id": 1629006,
+      "name": "Josh Okogie",
+      "teams": [
+        "MIN",
+        "PHX",
+        "CHA",
+        "HOU"
+      ],
+      "current_team": "HOU"
+    },
+    {
+      "id": 202696,
+      "name": "Nikola Vu\u010devi\u0107",
+      "teams": [
+        "PHI",
+        "ORL",
+        "CHI",
+        "BOS"
+      ],
+      "current_team": "BOS"
+    },
+    {
+      "id": 201566,
+      "name": "Russell Westbrook",
+      "teams": [
+        "OKC",
+        "HOU",
+        "WAS",
+        "LAL",
+        "LAC",
+        "DEN",
+        "SAC"
+      ],
+      "current_team": "SAC"
+    },
+    {
+      "id": 1630692,
+      "name": "Jordan Goodwin",
+      "teams": [
+        "WAS",
+        "PHX",
+        "MEM",
+        "LAL",
+        "PHX"
+      ],
+      "current_team": "PHX"
+    },
+    {
+      "id": 201587,
+      "name": "Nicolas Batum",
+      "teams": [
+        "POR",
+        "CHA",
+        "LAC",
+        "PHI",
+        "LAC"
+      ],
+      "current_team": "LAC"
+    },
+    {
+      "id": 203468,
+      "name": "CJ McCollum",
+      "teams": [
+        "POR",
+        "NOP",
+        "WAS",
+        "ATL"
+      ],
+      "current_team": "ATL"
+    },
+    {
+      "id": 203952,
+      "name": "Andrew Wiggins",
+      "teams": [
+        "MIN",
+        "GSW",
+        "MIA"
+      ],
+      "current_team": "MIA"
+    },
+    {
+      "id": 1626171,
+      "name": "Bobby Portis",
+      "teams": [
+        "CHI",
+        "WAS",
+        "NYK",
+        "MIL"
+      ],
+      "current_team": "MIL"
+    },
+    {
+      "id": 203903,
+      "name": "Jordan Clarkson",
+      "teams": [
+        "LAL",
+        "CLE",
+        "UTA",
+        "NYK"
+      ],
+      "current_team": "NYK"
+    },
+    {
+      "id": 203484,
+      "name": "Kentavious Caldwell-Pope",
+      "teams": [
+        "DET",
+        "LAL",
+        "WAS",
+        "DEN",
+        "ORL",
+        "MEM"
+      ],
+      "current_team": "MEM"
+    },
+    {
+      "id": 1626145,
+      "name": "Tyus Jones",
+      "teams": [
+        "MIN",
+        "MEM",
+        "WAS",
+        "PHX",
+        "ORL"
+      ],
+      "current_team": "DAL"
+    },
+    {
+      "id": 201142,
+      "name": "Kevin Durant",
+      "teams": [
+        "OKC",
+        "GSW",
+        "BKN",
+        "PHX",
+        "HOU"
+      ],
+      "current_team": "HOU"
+    },
+    {
+      "id": 1630180,
+      "name": "Saddiq Bey",
+      "teams": [
+        "DET",
+        "ATL",
+        "NOP"
+      ],
+      "current_team": "NOP"
+    }
+  ]
+}

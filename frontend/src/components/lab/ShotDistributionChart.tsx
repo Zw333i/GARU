@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
+import { BasketballLoader } from '@/components/ui/BasketballLoader'
 
 interface Player {
   id: number
@@ -98,7 +99,7 @@ export function ShotDistributionChart({ selectedPlayer }: ShotDistributionChartP
           Shot Distribution
         </h3>
         <div className="h-40 flex items-center justify-center">
-          <div className="animate-spin rounded-full h-8 w-8 border-2 border-electric-lime border-t-transparent" />
+          <BasketballLoader size="sm" text="Loading chart..." />
         </div>
       </div>
     )

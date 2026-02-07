@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { useAuthStore } from '@/store/authStore'
 import { useSessionDataStore } from '@/store/sessionDataStore'
 import { FireIcon, TrophyIcon } from '@/components/icons'
+import { BasketballLoader } from '@/components/ui/BasketballLoader'
 import { getXPProgress } from '@/lib/xpUtils'
 
 // NBA Trivia facts
@@ -93,10 +94,8 @@ export function QuickStats() {
       </h2>
 
       {loading ? (
-        <div className="space-y-4 animate-pulse flex-1">
-          <div className="h-6 bg-gunmetal rounded"></div>
-          <div className="h-6 bg-gunmetal rounded"></div>
-          <div className="h-6 bg-gunmetal rounded"></div>
+        <div className="flex items-center justify-center flex-1">
+          <BasketballLoader size="sm" text="" />
         </div>
       ) : (
         <div className="flex flex-col flex-1">

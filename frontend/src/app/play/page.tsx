@@ -126,9 +126,6 @@ function GameModeCard({ id, title, description, Icon, difficulty, color, gamesPl
         <p className="text-muted text-sm mb-4">{description}</p>
 
         <div className="flex items-center justify-between">
-          <span className="text-sm text-muted">
-            <span className="font-bold text-ghost-white">{gamesPlayed}</span> played
-          </span>
           <span className={clsx('text-sm font-medium flex items-center gap-1', colors.text)}>
             Play Now
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
