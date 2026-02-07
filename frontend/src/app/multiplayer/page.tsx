@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, Suspense } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -13,7 +13,8 @@ import {
   MaskIcon, 
   JourneyIcon,
   CheckIcon,
-  ArrowLeftIcon
+  ArrowLeftIcon,
+  XIcon
 } from '@/components/icons'
 import { BasketballLoader } from '@/components/ui/BasketballLoader'
 
@@ -48,6 +49,40 @@ function generateRoomCode(): string {
   return code
 }
 
+// Ensure user exists in public.users table (FK requirement)
+async function ensureUserExists(userId: string): Promise<boolean> {
+  try {
+    const { data } = await supabase
+      .from('users')
+      .select('id')
+      .eq('id', userId)
+      .single()
+
+    if (data) return true
+
+    // User doesn't exist — create from auth data
+    const { data: authData } = await supabase.auth.getUser()
+    if (!authData?.user) return false
+
+    const { error: insertError } = await supabase
+      .from('users')
+      .insert({
+        id: userId,
+        username: authData.user.user_metadata?.name || 'Player_' + userId.slice(0, 8),
+        avatar_url: authData.user.user_metadata?.avatar_url || null,
+      })
+
+    // Ignore duplicate key errors (race condition)
+    if (insertError && insertError.code !== '23505') {
+      console.error('Failed to create user record:', insertError)
+      return false
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
 function MultiplayerContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -72,6 +107,11 @@ function MultiplayerContent() {
     }
   }, [joinParam])
 
+  // Clear error when switching modes
+  useEffect(() => {
+    setError(null)
+  }, [mode])
+
   const handleCreateRoom = async () => {
     if (!selectedGame) {
       setError('Select a game')
@@ -86,10 +126,25 @@ function MultiplayerContent() {
     setError(null)
 
     try {
+      // 1. Verify active Supabase auth session (required for RLS)
+      const { data: sessionData } = await supabase.auth.getSession()
+      if (!sessionData?.session) {
+        setError('Your session has expired. Please sign in again.')
+        setLoading(false)
+        return
+      }
+
+      // 2. Ensure user exists in public.users table (FK requirement)
+      const userExists = await ensureUserExists(user.id)
+      if (!userExists) {
+        setError('Account setup issue. Try signing out and back in.')
+        setLoading(false)
+        return
+      }
+
+      // 3. Create room
       const roomCode = generateRoomCode()
-      
-      // Create room in database
-      const { error: createError } = await supabase
+      const { data, error: createError } = await supabase
         .from('multiplayer_rooms')
         .insert({
           code: roomCode,
@@ -98,16 +153,33 @@ function MultiplayerContent() {
           question_count: questionCount,
           timer_duration: timerDuration,
           status: 'waiting',
-          players: [{ id: user.id, score: 0, answers: [] }],
+          players: [{ 
+            id: user.id, 
+            score: 0, 
+            answers: [],
+            username: user.user_metadata?.name || 'Host',
+          }],
         })
+        .select()
 
-      if (createError) throw createError
+      if (createError) {
+        console.error('Database error creating room:', createError)
+        if (createError.code === '42P01') {
+          setError('Multiplayer is not set up yet. Please contact the admin to run the database migration.')
+        } else if (createError.code === '42501' || createError.message?.includes('permission')) {
+          setError('Permission denied. Try signing out and back in.')
+        } else if (createError.code === '23503') {
+          setError('Account not found in database. Try signing out and back in.')
+        } else {
+          setError(createError.message || 'Failed to create room')
+        }
+        return
+      }
 
-      // Navigate to lobby
       router.push(`/multiplayer/lobby?code=${roomCode}&host=true`)
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to create room:', err)
-      setError('Failed to create room. Try again.')
+      setError(err?.message || 'Something went wrong. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -127,6 +199,17 @@ function MultiplayerContent() {
     setError(null)
 
     try {
+      // Verify session
+      const { data: sessionData } = await supabase.auth.getSession()
+      if (!sessionData?.session) {
+        setError('Your session has expired. Please sign in again.')
+        setLoading(false)
+        return
+      }
+
+      // Ensure user exists in public.users
+      await ensureUserExists(user.id)
+
       // Find the room
       const { data: room, error: findError } = await supabase
         .from('multiplayer_rooms')
@@ -137,16 +220,32 @@ function MultiplayerContent() {
 
       if (findError || !room) {
         setError('Room not found or game already started')
+        setLoading(false)
         return
       }
 
       if (room.host_id === user.id) {
         setError('You cannot join your own room')
+        setLoading(false)
+        return
+      }
+
+      if (room.guest_id) {
+        setError('Room is already full')
+        setLoading(false)
         return
       }
 
       // Add player to room
-      const updatedPlayers = [...(room.players || []), { id: user.id, score: 0, answers: [] }]
+      const updatedPlayers = [
+        ...(room.players || []), 
+        { 
+          id: user.id, 
+          score: 0, 
+          answers: [],
+          username: user.user_metadata?.name || 'Guest',
+        }
+      ]
       
       const { error: joinError } = await supabase
         .from('multiplayer_rooms')
@@ -156,13 +255,16 @@ function MultiplayerContent() {
         })
         .eq('id', room.id)
 
-      if (joinError) throw joinError
+      if (joinError) {
+        console.error('Failed to join room:', joinError)
+        setError(joinError.message || 'Failed to join room')
+        return
+      }
 
-      // Navigate to lobby
       router.push(`/multiplayer/lobby?code=${joinCode.toUpperCase()}`)
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to join room:', err)
-      setError('Failed to join room. Try again.')
+      setError(err?.message || 'Something went wrong. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -183,6 +285,26 @@ function MultiplayerContent() {
           <p className="text-muted">Challenge your friends in real-time!</p>
         </div>
 
+        {/* Error Banner */}
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -10, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: 'auto' }}
+              exit={{ opacity: 0, y: -10, height: 0 }}
+              className="mb-4"
+            >
+              <div className="bg-hot-pink/20 border border-hot-pink/40 rounded-xl px-4 py-3 flex items-center gap-3">
+                <XIcon size={16} className="text-hot-pink shrink-0" />
+                <p className="text-sm text-hot-pink flex-1">{error}</p>
+                <button onClick={() => setError(null)} className="text-hot-pink/60 hover:text-hot-pink">
+                  <XIcon size={14} />
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Mode Selection */}
         {mode === 'select' && (
           <motion.div
@@ -190,6 +312,19 @@ function MultiplayerContent() {
             animate={{ opacity: 1, y: 0 }}
             className="space-y-4"
           >
+            {/* Not signed in warning */}
+            {!authLoading && !isAuthenticated && (
+              <div className="glass rounded-xl p-4 border border-yellow-500/30 mb-2">
+                <p className="text-sm text-yellow-400 text-center">
+                  You need to{' '}
+                  <Link href="/profile" className="text-electric-lime hover:underline font-bold">
+                    sign in
+                  </Link>{' '}
+                  to play multiplayer
+                </p>
+              </div>
+            )}
+
             <button
               onClick={() => setMode('host')}
               className="w-full glass rounded-2xl p-6 text-left hover:border-electric-lime transition-colors group"
@@ -230,7 +365,7 @@ function MultiplayerContent() {
             className="space-y-6"
           >
             <button
-              onClick={() => setMode('select')}
+              onClick={() => { setMode('select'); setSelectedGame(null) }}
               className="text-muted hover:text-ghost-white transition-colors flex items-center gap-2"
             >
               <ArrowLeftIcon size={16} /> Back
@@ -305,16 +440,19 @@ function MultiplayerContent() {
               </div>
             </div>
 
-            {error && (
-              <p className="text-hot-pink text-sm text-center">{error}</p>
-            )}
-
             <button
               onClick={handleCreateRoom}
-              disabled={loading || !isAuthenticated || authLoading}
-              className="w-full py-4 bg-electric-lime text-gunmetal font-bold rounded-xl hover:bg-green-400 transition-colors disabled:opacity-50"
+              disabled={loading || !isAuthenticated || authLoading || !selectedGame}
+              className="w-full py-4 bg-electric-lime text-gunmetal font-bold rounded-xl hover:bg-green-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              {loading ? 'Creating Room...' : 'Create Room'}
+              {loading ? (
+                <>
+                  <span className="w-5 h-5 border-2 border-gunmetal/30 border-t-gunmetal rounded-full animate-spin" />
+                  Creating Room...
+                </>
+              ) : (
+                'Create Room'
+              )}
             </button>
 
             {!isAuthenticated && !authLoading && (
@@ -333,7 +471,7 @@ function MultiplayerContent() {
             className="space-y-6"
           >
             <button
-              onClick={() => setMode('select')}
+              onClick={() => { setMode('select'); setJoinCode('') }}
               className="text-muted hover:text-ghost-white transition-colors flex items-center gap-2"
             >
               <ArrowLeftIcon size={16} /> Back
@@ -345,22 +483,30 @@ function MultiplayerContent() {
               <input
                 type="text"
                 value={joinCode}
-                onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                onChange={(e) => setJoinCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''))}
                 placeholder="XXXXXX"
                 maxLength={6}
+                autoFocus
                 className="w-full text-center text-3xl font-mono tracking-widest py-4 bg-gunmetal border border-surface rounded-xl text-ghost-white placeholder-muted focus:outline-none focus:border-electric-lime transition-colors"
               />
 
-              {error && (
-                <p className="text-hot-pink text-sm text-center mt-3">{error}</p>
-              )}
+              <p className="text-xs text-muted text-center mt-2">
+                Ask the host for the 6-character room code
+              </p>
 
               <button
                 onClick={handleJoinRoom}
                 disabled={loading || !isAuthenticated || authLoading || joinCode.length !== 6}
-                className="w-full mt-4 py-4 bg-hot-pink text-white font-bold rounded-xl hover:bg-pink-400 transition-colors disabled:opacity-50"
+                className="w-full mt-4 py-4 bg-hot-pink text-white font-bold rounded-xl hover:bg-pink-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                {loading ? 'Joining...' : 'Join Game'}
+                {loading ? (
+                  <>
+                    <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    Joining...
+                  </>
+                ) : (
+                  'Join Game'
+                )}
               </button>
 
               {!isAuthenticated && !authLoading && (

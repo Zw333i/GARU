@@ -49,7 +49,8 @@ export function ShotDistributionChart({ selectedPlayer }: ShotDistributionChartP
     const fetchDistribution = async () => {
       setIsLoading(true)
       try {
-        const res = await fetch(`http://localhost:8000/api/stats/shot-distribution/${selectedPlayer.id}`)
+        const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+        const res = await fetch(`${API_URL}/api/stats/shot-distribution/${selectedPlayer.id}`)
         if (res.ok) {
           const data = await res.json()
           setUsingRealData(data.using_real_data)

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, Suspense } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
@@ -10,7 +10,8 @@ import {
   CrownIcon, 
   GamepadIcon, 
   HourglassIcon,
-  CheckIcon
+  CheckIcon,
+  XIcon
 } from '@/components/icons'
 import { BasketballLoader } from '@/components/ui/BasketballLoader'
 
@@ -48,6 +49,9 @@ function LobbyContent() {
   const [room, setRoom] = useState<Room | null>(null)
   const [loading, setLoading] = useState(true)
   const [copied, setCopied] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [startingGame, setStartingGame] = useState(false)
+  const [connected, setConnected] = useState(false)
   const [hostUsername, setHostUsername] = useState<string>('Host')
   const [guestUsername, setGuestUsername] = useState<string>('Waiting...')
   const [hostAvatarUrl, setHostAvatarUrl] = useState<string | null>(null)
@@ -65,6 +69,12 @@ function LobbyContent() {
 
     if (error) {
       console.error('Error fetching room:', error)
+      setError('Room not found or has expired')
+      return
+    }
+
+    if (!data) {
+      setError('Room not found')
       return
     }
 
@@ -146,7 +156,9 @@ function LobbyContent() {
           }
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        setConnected(status === 'SUBSCRIBED')
+      })
 
     return () => {
       supabase.removeChannel(channel)
@@ -163,21 +175,37 @@ function LobbyContent() {
 
   const handleStartGame = async () => {
     if (!room || !isHost) return
+    setStartingGame(true)
+    setError(null)
 
-    // Generate questions based on game type
-    const questions = await generateQuestions(room.game_type, room.question_count)
+    try {
+      // Generate questions based on game type
+      const questions = await generateQuestions(room.game_type, room.question_count)
 
-    const { error } = await supabase
-      .from('multiplayer_rooms')
-      .update({
-        status: 'playing',
-        questions,
-        current_question: 0,
-      })
-      .eq('id', room.id)
+      if (questions.length === 0) {
+        setError('Failed to generate questions. Try again.')
+        setStartingGame(false)
+        return
+      }
 
-    if (error) {
-      console.error('Failed to start game:', error)
+      const { error } = await supabase
+        .from('multiplayer_rooms')
+        .update({
+          status: 'playing',
+          questions,
+          current_question: 0,
+        })
+        .eq('id', room.id)
+
+      if (error) {
+        console.error('Failed to start game:', error)
+        setError('Failed to start game. Try again.')
+      }
+    } catch (err: any) {
+      console.error('Failed to start game:', err)
+      setError(err?.message || 'Failed to start game')
+    } finally {
+      setStartingGame(false)
     }
   }
 
@@ -225,7 +253,8 @@ function LobbyContent() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <p className="text-xl mb-4">Room not found</p>
+          <p className="text-xl mb-2">Room not found</p>
+          {error && <p className="text-sm text-hot-pink mb-4">{error}</p>}
           <button
             onClick={() => router.push('/multiplayer')}
             className="px-6 py-3 bg-electric-lime text-gunmetal font-bold rounded-xl"
@@ -242,6 +271,36 @@ function LobbyContent() {
   return (
     <div className="min-h-screen py-8 px-4">
       <div className="max-w-lg mx-auto">
+        {/* Connection Status */}
+        <div className="flex justify-end mb-2">
+          <div className={`flex items-center gap-2 text-xs px-3 py-1 rounded-full ${
+            connected ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
+          }`}>
+            <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-400' : 'bg-yellow-400 animate-pulse'}`} />
+            {connected ? 'Connected' : 'Connecting...'}
+          </div>
+        </div>
+
+        {/* Error Banner */}
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -10, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: 'auto' }}
+              exit={{ opacity: 0, y: -10, height: 0 }}
+              className="mb-4"
+            >
+              <div className="bg-hot-pink/20 border border-hot-pink/40 rounded-xl px-4 py-3 flex items-center gap-3">
+                <XIcon size={16} className="text-hot-pink shrink-0" />
+                <p className="text-sm text-hot-pink flex-1">{error}</p>
+                <button onClick={() => setError(null)} className="text-hot-pink/60 hover:text-hot-pink">
+                  <XIcon size={14} />
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -350,10 +409,19 @@ function LobbyContent() {
           {isHost && (
             <button
               onClick={handleStartGame}
-              disabled={!canStart}
-              className="w-full py-4 bg-electric-lime text-gunmetal font-bold rounded-xl hover:bg-green-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={!canStart || startingGame}
+              className="w-full py-4 bg-electric-lime text-gunmetal font-bold rounded-xl hover:bg-green-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
-              {canStart ? 'Start Game' : 'Waiting for opponent...'}
+              {startingGame ? (
+                <>
+                  <span className="w-5 h-5 border-2 border-gunmetal/30 border-t-gunmetal rounded-full animate-spin" />
+                  Starting...
+                </>
+              ) : canStart ? (
+                'Start Game'
+              ) : (
+                'Waiting for opponent...'
+              )}
             </button>
           )}
 

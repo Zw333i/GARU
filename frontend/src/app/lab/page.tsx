@@ -115,7 +115,7 @@ export default function LabPage() {
         setHeatmapUrl(currentUrl)
       } catch {
         // Backend not running - show placeholder
-        setHeatmapError('Backend not available. Start with: cd backend && python main.py')
+        setHeatmapError('Backend not available. Heatmap data could not be loaded.')
         setHeatmapUrl(null)
       } finally {
         setHeatmapLoading(false)
@@ -352,9 +352,9 @@ export default function LabPage() {
               {selectedPlayer && heatmapError && !heatmapLoading && (
                 <div className="text-center max-w-md">
                   <LabIcon className="text-muted mx-auto mb-3" size={48} />
-                  <p className="text-muted mb-2">Backend required for heatmap</p>
-                  <p className="text-xs text-amber-400 bg-surface/50 px-4 py-2 rounded-lg">
-                    Run: cd backend &amp;&amp; python main.py
+                  <p className="text-muted mb-2">Heatmap unavailable</p>
+                  <p className="text-xs text-muted/70 px-4 py-2">
+                    Shot chart data could not be loaded right now. Try again later.
                   </p>
                 </div>
               )}

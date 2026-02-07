@@ -7,7 +7,7 @@ import { AuthProvider } from '@/components/providers/AuthProvider'
 import { AchievementToast } from '@/components/achievements/AchievementSystem'
 
 export const metadata: Metadata = {
-  title: 'GARU - The NBA Knowledge Arena',
+  title: 'GARU',
   description: 'Test your NBA knowledge, analyze player stats, and battle in draft challenges. The ultimate platform for basketball enthusiasts.',
   keywords: ['NBA', 'basketball', 'stats', 'trivia', 'draft', 'fantasy'],
   authors: [{ name: 'GARU Team' }],

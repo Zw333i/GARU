@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, Suspense } from 'react'
+import React, { useState, useEffect, useCallback, Suspense } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
@@ -62,6 +62,11 @@ function GameContent() {
   const [answers, setAnswers] = useState<PlayerData['answers']>([])
   const [showResult, setShowResult] = useState(false)
   const [questionStartTime, setQuestionStartTime] = useState<number>(0)
+  const [connected, setConnected] = useState(false)
+
+  // Ref to avoid stale closure in timer
+  const answeredRef = React.useRef(answered)
+  answeredRef.current = answered
 
   // Fetch room
   const fetchRoom = useCallback(async () => {
@@ -113,7 +118,9 @@ function GameContent() {
           }
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        setConnected(status === 'SUBSCRIBED')
+      })
 
     return () => {
       supabase.removeChannel(channel)
@@ -127,8 +134,11 @@ function GameContent() {
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
         if (prev <= 1) {
-          // Time's up - auto submit
-          handleSubmit(true)
+          clearInterval(timer)
+          // Use timeout to avoid calling handleSubmit during render
+          setTimeout(() => {
+            if (!answeredRef.current) handleSubmit(true)
+          }, 0)
           return 0
         }
         return prev - 1
@@ -136,6 +146,7 @@ function GameContent() {
     }, 1000)
 
     return () => clearInterval(timer)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, room, answered, showResult, currentQ])
 
   const handleSubmit = async (timeout = false) => {
@@ -258,8 +269,11 @@ function GameContent() {
       <div className="max-w-2xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
-          <div className="text-sm text-muted">
-            Question {currentQ + 1}/{room.questions.length}
+          <div className="flex items-center gap-2">
+            <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-400' : 'bg-yellow-400 animate-pulse'}`} />
+            <span className="text-sm text-muted">
+              Question {currentQ + 1}/{room.questions.length}
+            </span>
           </div>
           <div className="flex items-center gap-4">
             <div className="text-lg font-bold text-electric-lime">

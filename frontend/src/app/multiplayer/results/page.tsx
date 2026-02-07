@@ -128,8 +128,19 @@ function ResultsContent() {
   const playAgain = async () => {
     if (!room || !user) return
 
-    // Create a new room with same settings
-    const newCode = Math.random().toString(36).substring(2, 8).toUpperCase()
+    // Verify session
+    const { data: sessionData } = await supabase.auth.getSession()
+    if (!sessionData?.session) {
+      router.push('/multiplayer')
+      return
+    }
+
+    // Generate proper room code
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    let newCode = ''
+    for (let i = 0; i < 6; i++) {
+      newCode += chars.charAt(Math.floor(Math.random() * chars.length))
+    }
 
     const { data: newRoom, error } = await supabase
       .from('multiplayer_rooms')
@@ -140,14 +151,19 @@ function ResultsContent() {
         question_count: room.question_count,
         timer_duration: room.timer_duration,
         status: 'waiting',
-        players: [{ id: user.id, score: 0, answers: [] }],
+        players: [{ 
+          id: user.id, 
+          score: 0, 
+          answers: [],
+          username: user.user_metadata?.name || 'Host',
+        }],
         current_question: 0,
       })
       .select()
       .single()
 
     if (!error && newRoom) {
-      router.push(`/multiplayer/lobby?code=${newCode}`)
+      router.push(`/multiplayer/lobby?code=${newCode}&host=true`)
     }
   }
 
