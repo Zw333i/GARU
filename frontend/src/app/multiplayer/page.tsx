@@ -252,15 +252,25 @@ function MultiplayerContent() {
         return
       }
 
-      if (room.guest_id) {
-        setError('Room is already full')
+      const currentPlayers = room.players || []
+      const maxPlayers = room.max_players || 5
+
+      // Check if already in the room
+      if (currentPlayers.some((p: any) => p.id === user.id)) {
+        // Already joined — just go to lobby
+        router.push(`/multiplayer/lobby?code=${joinCode.toUpperCase()}`)
+        return
+      }
+
+      if (currentPlayers.length >= maxPlayers) {
+        setError(`Room is full (${maxPlayers} players max)`)
         setLoading(false)
         return
       }
 
       // Add player to room
       const updatedPlayers = [
-        ...(room.players || []), 
+        ...currentPlayers, 
         { 
           id: user.id, 
           score: 0, 
@@ -269,12 +279,15 @@ function MultiplayerContent() {
         }
       ]
       
+      // Set guest_id for first joiner (backward compat), otherwise just update players
+      const updatePayload: any = { players: updatedPlayers }
+      if (!room.guest_id) {
+        updatePayload.guest_id = user.id
+      }
+
       const { error: joinError } = await supabase
         .from('multiplayer_rooms')
-        .update({ 
-          players: updatedPlayers,
-          guest_id: user.id,
-        })
+        .update(updatePayload)
         .eq('id', room.id)
 
       if (joinError) {

@@ -36,6 +36,7 @@ interface Room {
   game_type: string
   question_count: number
   timer_duration: number
+  max_players?: number
   status: 'waiting' | 'playing' | 'finished'
   players: PlayerData[]
   questions: Question[]

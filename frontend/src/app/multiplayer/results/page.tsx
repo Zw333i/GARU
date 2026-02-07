@@ -47,6 +47,7 @@ interface Room {
   game_type: string
   question_count: number
   timer_duration: number
+  max_players?: number
   status: 'waiting' | 'playing' | 'finished'
   players: PlayerData[]
   questions: Question[]
@@ -87,8 +88,13 @@ function ResultsContent() {
 
     setRoom(data as Room)
 
-    // Fetch profiles for all players
-    const playerIds = [data.host_id, data.guest_id].filter(Boolean)
+    // Fetch profiles for all players in the players array
+    const playerIds = (data.players || []).map((p: PlayerData) => p.id).filter(Boolean)
+    if (playerIds.length === 0) {
+      // Fallback: use host_id + guest_id
+      playerIds.push(data.host_id)
+      if (data.guest_id) playerIds.push(data.guest_id)
+    }
     const { data: profilesData } = await supabase
       .from('users')
       .select('id, username, avatar_url')
@@ -179,11 +185,9 @@ function ResultsContent() {
     )
   }
 
-  // Sort players by score
   const sortedPlayers = [...(room.players || [])].sort((a, b) => b.score - a.score)
   const winner = sortedPlayers[0]
-  const loser = sortedPlayers[1]
-  const isTie = winner && loser && winner.score === loser.score
+  const isTie = sortedPlayers.length >= 2 && sortedPlayers[0]?.score === sortedPlayers[1]?.score
   const isWinner = user && winner?.id === user.id
 
   // Get wrong answers for current user
@@ -225,12 +229,17 @@ function ResultsContent() {
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.2 }}
-          className="grid grid-cols-2 gap-4 mb-8"
+          className={`grid gap-4 mb-8 ${
+            sortedPlayers.length <= 2 ? 'grid-cols-2' : 
+            sortedPlayers.length === 3 ? 'grid-cols-3' : 
+            'grid-cols-2 sm:grid-cols-3'
+          }`}
         >
           {sortedPlayers.map((player, index) => {
             const profile = profiles[player.id]
             const isCurrentUser = player.id === user?.id
             const correctCount = player.answers.filter(a => a.correct).length
+            const ordinal = index === 0 ? '1st' : index === 1 ? '2nd' : index === 2 ? '3rd' : `${index + 1}th`
 
             return (
               <div
@@ -239,10 +248,12 @@ function ResultsContent() {
                   index === 0 && !isTie ? 'ring-2 ring-electric-lime' : ''
                 } ${isCurrentUser ? 'bg-gunmetal/80' : ''}`}
               >
-                {index === 0 && !isTie && (
+                {index === 0 && !isTie ? (
                   <div className="flex justify-center mb-2">
                     <CrownIcon className="text-electric-lime" size={28} />
                   </div>
+                ) : (
+                  <p className="text-xs text-muted mb-2">{ordinal}</p>
                 )}
                 <div className="w-16 h-16 rounded-full mx-auto mb-3 flex items-center justify-center overflow-hidden">
                   {profile?.avatar_url ? (

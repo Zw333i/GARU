@@ -31,6 +31,7 @@ interface Room {
   game_type: string
   question_count: number
   timer_duration: number
+  max_players?: number
   status: 'waiting' | 'playing' | 'finished'
   players: Player[]
   questions?: any[]
@@ -52,10 +53,7 @@ function LobbyContent() {
   const [error, setError] = useState<string | null>(null)
   const [startingGame, setStartingGame] = useState(false)
   const [connected, setConnected] = useState(false)
-  const [hostUsername, setHostUsername] = useState<string>('Host')
-  const [guestUsername, setGuestUsername] = useState<string>('Waiting...')
-  const [hostAvatarUrl, setHostAvatarUrl] = useState<string | null>(null)
-  const [guestAvatarUrl, setGuestAvatarUrl] = useState<string | null>(null)
+  const [playerProfiles, setPlayerProfiles] = useState<Record<string, { username: string; avatar_url: string | null }>>({})
 
   // Fetch room data
   const fetchRoom = useCallback(async () => {
@@ -88,44 +86,34 @@ function LobbyContent() {
     }
   }, [roomCode, router])
 
-  // Fetch usernames whenever host_id or guest_id changes
+  // Fetch profiles for all players in the room
   useEffect(() => {
-    if (!room?.host_id) return
+    if (!room?.players || room.players.length === 0) return
 
-    const fetchHost = async () => {
+    const playerIds = room.players.map(p => p.id)
+    // Only fetch IDs we don't already have
+    const missingIds = playerIds.filter(id => !playerProfiles[id])
+    if (missingIds.length === 0) return
+
+    console.log('[Lobby] Fetching profiles for:', missingIds)
+    const fetchProfiles = async () => {
       const { data } = await supabase
         .from('users')
-        .select('username, avatar_url')
-        .eq('id', room.host_id)
-        .single()
-      if (data?.username) setHostUsername(data.username)
-      if (data?.avatar_url) setHostAvatarUrl(data.avatar_url)
-    }
-    fetchHost()
-  }, [room?.host_id])
+        .select('id, username, avatar_url')
+        .in('id', missingIds)
 
-  useEffect(() => {
-    if (!room?.guest_id) {
-      setGuestUsername('Waiting...')
-      setGuestAvatarUrl(null)
-      return
-    }
-
-    console.log('[Lobby] Guest joined! Fetching guest info:', room.guest_id)
-    const fetchGuest = async () => {
-      const { data } = await supabase
-        .from('users')
-        .select('username, avatar_url')
-        .eq('id', room.guest_id!)
-        .single()
-      if (data?.username) {
-        console.log('[Lobby] Guest username:', data.username)
-        setGuestUsername(data.username)
+      if (data) {
+        setPlayerProfiles(prev => {
+          const updated = { ...prev }
+          data.forEach(u => {
+            updated[u.id] = { username: u.username, avatar_url: u.avatar_url }
+          })
+          return updated
+        })
       }
-      if (data?.avatar_url) setGuestAvatarUrl(data.avatar_url)
     }
-    fetchGuest()
-  }, [room?.guest_id])
+    fetchProfiles()
+  }, [room?.players?.length])
 
   useEffect(() => {
     fetchRoom().then(() => setLoading(false))
@@ -182,11 +170,10 @@ function LobbyContent() {
         const updated = data as Room
         // Only update if something actually changed
         if (
-          updated.guest_id !== room.guest_id ||
           updated.status !== room.status ||
           updated.players?.length !== room.players?.length
         ) {
-          console.log('[Lobby] Poll detected change - guest:', updated.guest_id, 'status:', updated.status)
+          console.log('[Lobby] Poll detected change - players:', updated.players?.length, 'status:', updated.status)
           setRoom(updated)
           if (updated.status === 'playing') {
             router.push(`/multiplayer/game?code=${roomCode}`)
@@ -196,7 +183,7 @@ function LobbyContent() {
     }, 3000)
 
     return () => clearInterval(interval)
-  }, [roomCode, room?.guest_id, room?.status, room?.players?.length, router])
+  }, [roomCode, room?.status, room?.players?.length, router])
 
   const handleCopyCode = () => {
     if (roomCode) {
@@ -252,13 +239,18 @@ function LobbyContent() {
         .delete()
         .eq('id', room.id)
     } else {
-      // Remove guest from room
+      // Remove this player from room
+      const updatedPlayers = room.players.filter(p => p.id !== user.id)
+      const updatePayload: any = { players: updatedPlayers }
+      // Clear guest_id if this player was the guest
+      if (room.guest_id === user.id) {
+        // Set guest_id to the next non-host player, or null
+        const nextGuest = updatedPlayers.find(p => p.id !== room.host_id)
+        updatePayload.guest_id = nextGuest?.id || null
+      }
       await supabase
         .from('multiplayer_rooms')
-        .update({
-          guest_id: null,
-          players: room.players.filter(p => p.id !== user.id),
-        })
+        .update(updatePayload)
         .eq('id', room.id)
     }
 
@@ -299,7 +291,9 @@ function LobbyContent() {
     )
   }
 
-  const canStart = room.guest_id !== null
+  const canStart = (room.players?.length || 0) >= 2
+  const maxPlayers = room.max_players || 5
+  const emptySlots = Math.max(0, maxPlayers - (room.players?.length || 0))
 
   return (
     <div className="min-h-screen py-8 px-4">
@@ -386,54 +380,69 @@ function LobbyContent() {
           animate={{ opacity: 1, y: 0 }}
           className="glass rounded-2xl p-6 mb-6"
         >
-          <h3 className="text-lg font-bold mb-4">Players</h3>
+          <h3 className="text-lg font-bold mb-4">
+            Players ({room.players?.length || 0}/{maxPlayers})
+          </h3>
           
           <div className="space-y-3">
-            {/* Host */}
-            <div className="flex items-center gap-3 p-3 bg-surface rounded-xl">
-              <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center">
-                {hostAvatarUrl ? (
-                  <img src={hostAvatarUrl} alt={hostUsername} className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full bg-electric-lime/20 flex items-center justify-center">
-                    <CrownIcon className="text-electric-lime" size={20} />
-                  </div>
-                )}
-              </div>
-              <div className="flex-1">
-                <p className="font-bold">{hostUsername}</p>
-                <p className="text-xs text-muted">Host</p>
-              </div>
-              <span className="text-electric-lime flex items-center gap-1">
-                <CheckIcon size={14} /> Ready
-              </span>
-            </div>
+            {/* Render all joined players */}
+            {room.players?.map((player, index) => {
+              const profile = playerProfiles[player.id]
+              const isPlayerHost = player.id === room.host_id
+              const displayName = profile?.username || player.username || (isPlayerHost ? 'Host' : `Player ${index + 1}`)
+              const avatarUrl = profile?.avatar_url || null
 
-            {/* Guest */}
-            <div className={`flex items-center gap-3 p-3 rounded-xl ${
-              room.guest_id ? 'bg-surface' : 'bg-surface/50 border border-dashed border-surface'
-            }`}>
-              <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center">
-                {guestAvatarUrl ? (
-                  <img src={guestAvatarUrl} alt={guestUsername} className="w-full h-full object-cover" />
-                ) : room.guest_id ? (
-                  <div className="w-full h-full bg-hot-pink/20 flex items-center justify-center">
-                    <GamepadIcon className="text-hot-pink" size={20} />
+              return (
+                <motion.div
+                  key={player.id}
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: index * 0.1 }}
+                  className="flex items-center gap-3 p-3 bg-surface rounded-xl"
+                >
+                  <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center">
+                    {avatarUrl ? (
+                      <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className={`w-full h-full flex items-center justify-center ${
+                        isPlayerHost ? 'bg-electric-lime/20' : 'bg-hot-pink/20'
+                      }`}>
+                        {isPlayerHost ? (
+                          <CrownIcon className="text-electric-lime" size={20} />
+                        ) : (
+                          <GamepadIcon className="text-hot-pink" size={20} />
+                        )}
+                      </div>
+                    )}
                   </div>
-                ) : (
+                  <div className="flex-1">
+                    <p className="font-bold">{displayName}</p>
+                    <p className="text-xs text-muted">{isPlayerHost ? 'Host' : `Player ${index + 1}`}</p>
+                  </div>
+                  <span className="text-electric-lime flex items-center gap-1">
+                    <CheckIcon size={14} /> Ready
+                  </span>
+                </motion.div>
+              )
+            })}
+
+            {/* Empty slots */}
+            {Array.from({ length: emptySlots }).map((_, index) => (
+              <div
+                key={`empty-${index}`}
+                className="flex items-center gap-3 p-3 rounded-xl bg-surface/50 border border-dashed border-surface"
+              >
+                <div className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center">
                   <div className="w-full h-full bg-surface flex items-center justify-center">
                     <HourglassIcon className="text-muted" size={20} />
                   </div>
-                )}
+                </div>
+                <div className="flex-1">
+                  <p className="font-bold text-muted">Waiting for player...</p>
+                  <p className="text-xs text-muted">Open slot</p>
+                </div>
               </div>
-              <div className="flex-1">
-                <p className={`font-bold ${!room.guest_id && 'text-muted'}`}>
-                  {room.guest_id ? guestUsername : 'Waiting for player...'}
-                </p>
-                <p className="text-xs text-muted">Guest</p>
-              </div>
-              {room.guest_id && <span className="text-electric-lime flex items-center gap-1"><CheckIcon size={14} /> Ready</span>}
-            </div>
+            ))}
           </div>
         </motion.div>
 
@@ -451,7 +460,7 @@ function LobbyContent() {
                   Starting...
                 </>
               ) : canStart ? (
-                'Start Game'
+                `Start Game (${room.players?.length || 0} players)`
               ) : (
                 'Waiting for opponent...'
               )}
