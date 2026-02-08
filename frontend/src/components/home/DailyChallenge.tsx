@@ -6,6 +6,7 @@ import { TargetIcon, QuestionIcon, XIcon, ConfettiIcon } from '@/components/icon
 import { sounds } from '@/lib/sounds'
 import { supabase } from '@/lib/supabase'
 import { calculateLevel } from '@/lib/xpUtils'
+import { checkGuess } from '@/lib/nameMatch'
 
 // XP reward for daily challenge
 const DAILY_CHALLENGE_XP = 25
@@ -194,14 +195,7 @@ export function DailyChallenge() {
   const handleGuess = async () => {
     if (alreadyCompleted) return
     
-    const guessLower = guess.toLowerCase().trim()
-    const nameParts = dailyPlayer.name.toLowerCase().split(' ')
-    const firstName = nameParts[0]
-    const lastName = nameParts[nameParts.length - 1]
-    
-    const correct = guessLower.includes(firstName) || 
-                   guessLower.includes(lastName) ||
-                   guessLower === dailyPlayer.name.toLowerCase()
+    const correct = checkGuess(guess, dailyPlayer.name)
     
     setIsCorrect(correct)
     setRevealed(true)

@@ -10,6 +10,7 @@ import { CheckIcon, XIcon } from '@/components/icons'
 import { BasketballLoader } from '@/components/ui/BasketballLoader'
 import { sounds } from '@/lib/sounds'
 import { useSettingsStore } from '@/store/settingsStore'
+import { checkGuess } from '@/lib/nameMatch'
 
 interface Question {
   id: number
@@ -210,12 +211,7 @@ function GameContent() {
     const answerToCheck = room.game_type === 'the-journey' ? question.answer : question.name
 
     if (!timeout && guess.trim()) {
-      const guessLower = guess.toLowerCase().trim()
-      const answerLower = (answerToCheck || '').toLowerCase()
-      const nameParts = answerLower.split(' ')
-      
-      correct = guessLower === answerLower ||
-                nameParts.some(part => guessLower.includes(part) && part.length > 2)
+      correct = checkGuess(guess, answerToCheck || '')
     }
 
     setAnswered(true)

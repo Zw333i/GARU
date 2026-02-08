@@ -11,6 +11,7 @@ import { supabase, saveGameScore, incrementRolePlayerGuesses } from '@/lib/supab
 import { SearchIcon, CheckIcon, XIcon, ArrowRightIcon, ArrowLeftIcon } from '@/components/icons'
 import { BasketballLoader } from '@/components/ui/BasketballLoader'
 import { useSessionDataStore } from '@/store/sessionDataStore'
+import { checkGuess } from '@/lib/nameMatch'
 
 // Timer icon component
 const TimerIcon = ({ size = 24 }: { size?: number }) => (
@@ -19,26 +20,6 @@ const TimerIcon = ({ size = 24 }: { size?: number }) => (
     <polyline points="12,6 12,12 16,14" />
   </svg>
 )
-
-// Helper to check if guess matches player - require minimum 2 characters
-const checkGuess = (guess: string, playerName: string): boolean => {
-  const guessLower = guess.toLowerCase().trim()
-  
-  // Require at least 3 characters for a valid guess
-  if (guessLower.length < 3) return false
-  
-  const nameParts = playerName.toLowerCase().split(' ')
-  const firstName = nameParts[0]
-  const lastName = nameParts.slice(1).join(' ')
-  const fullName = playerName.toLowerCase()
-  
-  return (
-    guessLower === fullName ||
-    guessLower === firstName ||
-    guessLower === lastName ||
-    (guessLower.length >= 3 && fullName.includes(guessLower))
-  )
-}
 
 // Question count options
 const QUESTION_OPTIONS = [5, 10, 30] as const

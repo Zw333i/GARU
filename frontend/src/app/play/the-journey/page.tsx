@@ -14,26 +14,7 @@ import { JourneyIcon, CheckIcon, XIcon, ArrowRightIcon, ArrowLeftIcon } from '@/
 import { supabase, saveGameScore } from '@/lib/supabase'
 import { useSessionDataStore } from '@/store/sessionDataStore'
 import { JourneyPlayer } from '@/lib/api'
-
-// Helper to check if guess matches player - require minimum 2 characters
-const checkGuess = (guess: string, playerName: string): boolean => {
-  const guessLower = guess.toLowerCase().trim()
-  
-  // Require at least 2 characters for a valid guess
-  if (guessLower.length < 2) return false
-  
-  const nameParts = playerName.toLowerCase().split(' ')
-  const firstName = nameParts[0]
-  const lastName = nameParts.slice(1).join(' ')
-  const fullName = playerName.toLowerCase()
-  
-  return (
-    guessLower === fullName ||
-    guessLower === firstName ||
-    guessLower === lastName ||
-    (guessLower.length >= 3 && fullName.includes(guessLower))
-  )
-}
+import { checkGuess } from '@/lib/nameMatch'
 
 export default function JourneyPage() {
   const { soundEnabled } = useSettingsStore()
