@@ -5,7 +5,8 @@
 function normalize(str: string): string {
   return str
     .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u0300-\u036f]/g, '') // remove diacritics
+    .replace(/\./g, '')              // remove periods (T.J. → TJ, J.R. → JR)
     .toLowerCase()
     .trim()
 }

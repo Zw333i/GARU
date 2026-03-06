@@ -62,7 +62,7 @@ export function ShotChartVisualizer({ selectedPlayer }: ShotChartVisualizerProps
     }
 
     fetchShots()
-  }, [selectedPlayer?.id, selectedPlayer])
+  }, [selectedPlayer?.id])
 
   // Calculate stats
   const madeShots = shots.filter(s => s.made)

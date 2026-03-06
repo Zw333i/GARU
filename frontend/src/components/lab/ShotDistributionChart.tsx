@@ -46,6 +46,7 @@ export function ShotDistributionChart({ selectedPlayer }: ShotDistributionChartP
       return
     }
 
+    let aborted = false
     const fetchDistribution = async () => {
       setIsLoading(true)
       try {
@@ -53,22 +54,35 @@ export function ShotDistributionChart({ selectedPlayer }: ShotDistributionChartP
         const res = await fetch(`${API_URL}/api/stats/shot-distribution/${selectedPlayer.id}`)
         if (res.ok) {
           const data = await res.json()
+          if (aborted) return
           setUsingRealData(data.using_real_data)
-          const zonesWithColors = data.zones.map((z: Omit<ZoneData, 'color'>) => ({
-            ...z,
-            color: ZONE_COLORS[z.zone] || '#6B7280',
-          }))
-          setZones(zonesWithColors)
+          const hasData = data.zones.some((z: ZoneData) => z.attempts > 0)
+          if (hasData) {
+            const zonesWithColors = data.zones.map((z: Omit<ZoneData, 'color'>) => ({
+              ...z,
+              color: ZONE_COLORS[z.zone] || '#6B7280',
+            }))
+            setZones(zonesWithColors)
+          } else {
+            setZones([])
+            setUsingRealData(false)
+          }
+        } else {
+          if (!aborted) setZones([])
         }
-      } catch (err) {
-        console.error('Failed to fetch shot distribution:', err)
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') return
+        // Suppress network errors when backend is offline — show empty state silently
+        if (!(err instanceof TypeError)) console.error('Failed to fetch shot distribution:', err)
+        if (!aborted) setZones([])
       } finally {
-        setIsLoading(false)
+        if (!aborted) setIsLoading(false)
       }
     }
 
     fetchDistribution()
-  }, [selectedPlayer])
+    return () => { aborted = true }
+  }, [selectedPlayer?.id])
 
   if (!selectedPlayer) {
     return (
@@ -130,6 +144,13 @@ export function ShotDistributionChart({ selectedPlayer }: ShotDistributionChartP
         )}
       </h3>
 
+      {zones.length === 0 && (
+        <div className="h-40 flex items-center justify-center text-muted text-sm flex-col gap-2">
+          <p>No shot distribution data available for {selectedPlayer.name}</p>
+          <p className="text-xs text-muted/60">Run the sync script to populate the database</p>
+        </div>
+      )}
+
       <div className="space-y-4">
         {zones.map((zone, index) => (
           <motion.div
@@ -169,22 +190,24 @@ export function ShotDistributionChart({ selectedPlayer }: ShotDistributionChartP
       </div>
 
       {/* Summary Stats */}
-      <div className="mt-6 pt-4 border-t border-surface">
-        <div className="grid grid-cols-2 gap-4 text-center">
-          <div className="bg-gunmetal rounded-lg p-3">
-            <p className="text-muted text-xs">Most Common Zone</p>
-            <p className="font-bold text-sm" style={{ color: zones[0]?.color }}>
-              {zones.length > 0 ? zones.reduce((max, z) => z.pct > max.pct ? z : max).zone : '-'}
-            </p>
-          </div>
-          <div className="bg-gunmetal rounded-lg p-3">
-            <p className="text-muted text-xs">Best Efficiency</p>
-            <p className="font-bold text-sm text-green-400">
-              {zones.length > 0 ? zones.reduce((max, z) => z.efficiency > max.efficiency ? z : max).zone : '-'}
-            </p>
+      {zones.length > 0 && (
+        <div className="mt-6 pt-4 border-t border-surface">
+          <div className="grid grid-cols-2 gap-4 text-center">
+            <div className="bg-gunmetal rounded-lg p-3">
+              <p className="text-muted text-xs">Most Common Zone</p>
+              <p className="font-bold text-sm" style={{ color: zones[0]?.color }}>
+                {zones.reduce((max, z) => z.pct > max.pct ? z : max).zone}
+              </p>
+            </div>
+            <div className="bg-gunmetal rounded-lg p-3">
+              <p className="text-muted text-xs">Best Efficiency</p>
+              <p className="font-bold text-sm text-green-400">
+                {zones.reduce((max, z) => z.efficiency > max.efficiency ? z : max).zone}
+              </p>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </motion.div>
   )
 }

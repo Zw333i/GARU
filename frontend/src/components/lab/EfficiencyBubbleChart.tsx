@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import { motion } from 'framer-motion'
 
 interface Player {
@@ -11,7 +11,11 @@ interface Player {
   ppg: number
   rpg?: number
   apg?: number
-  ts?: number // True Shooting %
+  ts?: number // True Shooting % (computed)
+  fga?: number
+  fta?: number
+  fg_pct?: number
+  mpg?: number
 }
 
 interface EfficiencyBubbleChartProps {
@@ -39,20 +43,27 @@ const AlertIcon = () => (
   </svg>
 )
 
-const SkullIcon = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M12 2C6.48 2 2 6.48 2 12c0 3.69 2.47 6.86 6 8.25V22h8v-1.75c3.53-1.39 6-4.56 6-8.25 0-5.52-4.48-10-10-10zm-2 15h-1v-2h1v2zm0-4h-1v-4h1v4zm4 4h-1v-2h1v2zm0-4h-1v-4h1v4zm4 4h-1v-2h1v2zm0-4h-1v-4h1v4z"/>
+const PeachIcon = () => (
+  <svg width="16" height="16" viewBox="0 0 64 64" fill="currentColor">
+    {/* Stem */}
+    <path d="M32 6 C32 6 31 2 34 1 C37 0 38 3 36 5" fill="none" stroke="#7B4F2E" strokeWidth="2" strokeLinecap="round"/>
+    {/* Leaf */}
+    <path d="M33 5 C36 2 44 4 42 10 C40 14 33 12 33 5 Z" fill="#4CAF50"/>
+    {/* Peach body */}
+    <path d="M32 10 C20 10 10 20 10 32 C10 44 20 56 32 56 C44 56 54 44 54 32 C54 20 44 10 32 10 Z" fill="#FF8C69"/>
+    {/* Peach blush / crease */}
+    <path d="M32 12 C32 12 26 22 26 32 C26 42 32 54 32 54" fill="none" stroke="#E8604A" strokeWidth="2.5" strokeLinecap="round" opacity="0.6"/>
+    {/* Highlight */}
+    <ellipse cx="24" cy="24" rx="5" ry="4" fill="#FFAD8E" opacity="0.6" transform="rotate(-20,24,24)"/>
   </svg>
 )
-
-const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/+$/, '')
 
 // Quadrant definitions
 const QUADRANTS = {
   highEfficient: { label: 'Stars', icon: StarIcon, color: 'text-electric-lime', bgColor: 'bg-electric-lime/20', desc: 'High PPG, High TS%' },
   efficient: { label: 'Efficient', icon: SparkleIcon, color: 'text-blue-400', bgColor: 'bg-blue-400/20', desc: 'Low PPG, High TS%' },
   inefficient: { label: 'Volume', icon: AlertIcon, color: 'text-amber-400', bgColor: 'bg-amber-400/20', desc: 'High PPG, Low TS%' },
-  cheeks: { label: 'CHEEKS', icon: SkullIcon, color: 'text-hot-pink', bgColor: 'bg-hot-pink/20', desc: 'Low PPG, Low TS%' },
+  cheeks: { label: 'CHEEKS', icon: PeachIcon, color: 'text-hot-pink', bgColor: 'bg-hot-pink/20', desc: 'Low PPG, Low TS%' },
 }
 
 // Axis thresholds
@@ -62,59 +73,26 @@ const TS_THRESHOLD = 57 // High vs Low efficiency
 export function EfficiencyBubbleChart({ players, selectedPlayerId, onPlayerClick }: EfficiencyBubbleChartProps) {
   const [hoveredPlayer, setHoveredPlayer] = useState<Player | null>(null)
   const [showLabels, setShowLabels] = useState(true)
-  const [efficiencyData, setEfficiencyData] = useState<Record<number, number>>({})
-  const [usingRealData, setUsingRealData] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
 
-  // Fetch real TS% data for top players
-  useEffect(() => {
-    if (players.length === 0) return
-    
-    const fetchEfficiency = async () => {
-      setIsLoading(true)
-      const topPlayers = players.slice(0, 30) // Fetch for top 30 players
-      const newData: Record<number, number> = {}
-      let hasRealData = false
-      
-      // Batch fetch efficiency data
-      for (const player of topPlayers) {
-        try {
-          const res = await fetch(`${API_URL}/api/stats/player-efficiency/${player.id}`)
-          if (res.ok) {
-            const data = await res.json()
-            if (data.using_real_data) {
-              hasRealData = true
-              newData[player.id] = data.ts_pct
-            }
-          }
-        } catch {
-          // Skip on error
-        }
-      }
-      
-      setEfficiencyData(newData)
-      setUsingRealData(hasRealData)
-      setIsLoading(false)
-    }
-    
-    fetchEfficiency()
-  }, [players])
+  // Only include players with 7+ minutes per game
+  const activePlayers = useMemo(() => players.filter(p => (p.mpg ?? 0) >= 7), [players])
 
-  // Generate fallback TS% for players without real data
-  const generateTS = (playerId: number, ppg: number): number => {
-    const seed = playerId % 100
-    const base = 52 + (seed / 100) * 16
-    const ppgBonus = ppg > 25 ? 2 : ppg > 20 ? 1 : 0
-    return Math.min(68, Math.max(48, base + ppgBonus + (seed % 5) - 2))
-  }
-
-  // Process players with TS% data (real or generated)
+  // Compute TS% from real cached_players data (fga + fta + ppg)
+  // Formula: TS% = PTS / (2 * (FGA + 0.44 * FTA)) * 100
+  // Fallback: fg_pct * 1.08 approximation if fga/fta unavailable
   const processedPlayers = useMemo(() => {
-    return players.map(p => ({
-      ...p,
-      ts: efficiencyData[p.id] || p.ts || generateTS(p.id, p.ppg)
-    }))
-  }, [players, efficiencyData])
+    return activePlayers.map(p => {
+      let ts: number
+      if (p.fga && p.fta && p.ppg && (p.fga + 0.44 * p.fta) > 0) {
+        ts = (p.ppg / (2 * (p.fga + 0.44 * p.fta))) * 100
+      } else if (p.fg_pct) {
+        ts = p.fg_pct * 1.08
+      } else {
+        ts = 55 // league average placeholder – no simulation
+      }
+      return { ...p, ts: Math.round(ts * 10) / 10 }
+    })
+  }, [players])
 
   // Get quadrant for a player
   const getQuadrant = (ppg: number, ts: number) => {
@@ -125,11 +103,10 @@ export function EfficiencyBubbleChart({ players, selectedPlayerId, onPlayerClick
   }
 
   // Calculate SVG coordinates (scale to fit 400x400 viewBox)
+  // TS% range: 30–80%, PPG range: 0–40
   const getCoords = (ppg: number, ts: number) => {
-    // PPG: 0-35 maps to x: 50-380
-    const x = Math.min(380, Math.max(50, (ppg / 35) * 330 + 50))
-    // TS%: 45-70% maps to y: 380-40 (inverted for SVG)
-    const y = Math.min(380, Math.max(40, 380 - ((ts - 45) / 25) * 340))
+    const x = Math.min(380, Math.max(50, (ppg / 40) * 330 + 50))
+    const y = Math.min(380, Math.max(40, 380 - ((ts - 30) / 50) * 340))
     return { x, y }
   }
 
@@ -157,15 +134,6 @@ export function EfficiencyBubbleChart({ players, selectedPlayerId, onPlayerClick
             <line x1="3" y1="12" x2="21" y2="12" />
           </svg>
           The Box
-          {usingRealData && (
-            <span className="ml-2 text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full flex items-center gap-1">
-              <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-              LIVE DATA
-            </span>
-          )}
-          {isLoading && (
-            <span className="ml-2 text-xs text-muted">Loading...</span>
-          )}
         </h2>
         <button
           onClick={() => setShowLabels(!showLabels)}
@@ -237,18 +205,18 @@ export function EfficiencyBubbleChart({ players, selectedPlayerId, onPlayerClick
 
           {/* X-axis labels (PPG) */}
           <text x="50" y="400" textAnchor="middle" fill="#64748B" fontSize="10">0</text>
-          <text x="132" y="400" textAnchor="middle" fill="#64748B" fontSize="10">10</text>
+          <text x="132" y="400" textAnchor="middle" fill="#64748B" fontSize="10">13</text>
           <text x="215" y="400" textAnchor="middle" fill="#EC4899" fontSize="10" fontWeight="bold">18</text>
-          <text x="298" y="400" textAnchor="middle" fill="#64748B" fontSize="10">25</text>
-          <text x="380" y="400" textAnchor="middle" fill="#64748B" fontSize="10">35</text>
+          <text x="298" y="400" textAnchor="middle" fill="#64748B" fontSize="10">30</text>
+          <text x="380" y="400" textAnchor="middle" fill="#64748B" fontSize="10">40</text>
           <text x="215" y="415" textAnchor="middle" fill="#94A3B8" fontSize="11">Points Per Game</text>
 
           {/* Y-axis labels (TS%) - moved further left */}
-          <text x="20" y="385" textAnchor="middle" fill="#64748B" fontSize="10">45%</text>
-          <text x="20" y="295" textAnchor="middle" fill="#64748B" fontSize="10">51%</text>
+          <text x="20" y="385" textAnchor="middle" fill="#64748B" fontSize="10">30%</text>
+          <text x="20" y="295" textAnchor="middle" fill="#64748B" fontSize="10">46%</text>
           <text x="20" y="215" textAnchor="middle" fill="#EC4899" fontSize="10" fontWeight="bold">57%</text>
-          <text x="20" y="125" textAnchor="middle" fill="#64748B" fontSize="10">63%</text>
-          <text x="20" y="45" textAnchor="middle" fill="#64748B" fontSize="10">70%</text>
+          <text x="20" y="125" textAnchor="middle" fill="#64748B" fontSize="10">68%</text>
+          <text x="20" y="45" textAnchor="middle" fill="#64748B" fontSize="10">80%</text>
           <text x="8" y="210" textAnchor="middle" fill="#94A3B8" fontSize="10" transform="rotate(-90, 8, 210)">TS%</text>
 
           {/* Player bubbles */}

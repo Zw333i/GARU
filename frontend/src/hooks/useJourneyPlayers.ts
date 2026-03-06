@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { api, JourneyPlayer } from '@/lib/api'
+import { supabase } from '@/lib/supabase'
 
 interface UseJourneyPlayersResult {
   players: JourneyPlayer[]
@@ -21,7 +22,34 @@ export function useJourneyPlayers(count: number = 30, minTeams: number = 3): Use
     try {
       setLoading(true)
       setError(null)
-      
+
+      // Primary: read directly from Supabase (no backend needed)
+      const { data, error: sbError } = await supabase
+        .from('journey_players')
+        .select('player_id, player_name, teams, current_team')
+        .limit(count * 2)
+
+      if (!sbError && data && data.length > 0) {
+        // Filter to players with enough teams, shuffle, take count
+        const mapped: JourneyPlayer[] = data
+          .map(row => ({
+            id: row.player_id as number,
+            name: row.player_name as string,
+            teams: (row.teams as string[]) ?? [],
+            current_team: (row.current_team as string) ?? 'FA',
+          }))
+          .filter(p => p.teams.length >= minTeams)
+          .sort(() => Math.random() - 0.5)
+          .slice(0, count)
+
+        if (mapped.length > 0) {
+          setPlayers(mapped)
+          setUsedIndices(new Set())
+          return
+        }
+      }
+
+      // Fallback: backend API (requires server running)
       const response = await api.getJourneyPlayers(count, minTeams)
       setPlayers(response.players)
       setUsedIndices(new Set())

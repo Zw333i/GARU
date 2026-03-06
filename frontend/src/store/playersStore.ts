@@ -25,6 +25,9 @@ export interface CachedPlayer {
   gp?: number
   mpg?: number
   rating?: number
+  fga?: number
+  fta?: number
+  fg3a?: number
 }
 
 interface PlayersState {
@@ -185,6 +188,9 @@ export const usePlayersStore = create<PlayersState>()(
                 ft_pct?: number
                 gp?: number
                 mpg?: number
+                fga?: number
+                fta?: number
+                fg3a?: number
               } | null
             }
             
@@ -204,6 +210,9 @@ export const usePlayersStore = create<PlayersState>()(
               gp: p.season_stats?.gp,
               mpg: p.season_stats?.mpg,
               rating: p.rating,
+              fga: p.season_stats?.fga,
+              fta: p.season_stats?.fta,
+              fg3a: p.season_stats?.fg3a,
             }))
 
             const stars = mappedPlayers.filter(p => p.ppg >= 20)

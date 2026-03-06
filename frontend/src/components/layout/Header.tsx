@@ -161,7 +161,7 @@ export function Header() {
   }
 
   return (
-    <header className="sticky top-0 z-40 glass border-b border-surface/50">
+    <header className="sticky top-0 z-50 glass border-b border-surface/50">
       <div className="flex items-center justify-between px-4 py-3 md:px-8 md:ml-20">
         {/* Logo */}
         <Link href="/" className="flex items-center gap-2">

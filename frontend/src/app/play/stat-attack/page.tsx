@@ -372,18 +372,7 @@ export default function StatAttackPage() {
             )}
           </motion.div>
 
-          {/* Progress bar */}
-          <div className="fixed bottom-24 left-0 right-0 px-4">
-            <div className="max-w-lg mx-auto">
-              <div className="h-2 bg-surface rounded-full overflow-hidden">
-                <motion.div
-                  className="h-full bg-electric-lime"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${(round / maxRounds) * 100}%` }}
-                />
-              </div>
-            </div>
-          </div>
+
         </>
       ) : (
         <motion.div

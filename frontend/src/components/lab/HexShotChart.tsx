@@ -56,64 +56,6 @@ const ZONE_DEFINITIONS = [
   { id: 'above_break_3_center', x: 0, y: 280, zone: 'Top of Key 3', leagueAvg: 0.38 },
 ]
 
-// Generate player-specific zone data based on player ID (seeded random)
-function generatePlayerZones(playerId: number): HexZone[] {
-  let seed = playerId
-  const random = () => {
-    seed = (seed * 16807) % 2147483647
-    return (seed - 1) / 2147483646
-  }
-  
-  // Player tendencies based on ID
-  const isShooter = (playerId % 3) === 0
-  const isSlasher = (playerId % 5) === 0
-  const isBigMan = (playerId % 7) === 0
-  
-  return ZONE_DEFINITIONS.map(zone => {
-    // Base attempts - varies by zone and player type
-    let baseAttempts = 20 + Math.floor(random() * 30)
-    let efficiency = zone.leagueAvg
-    
-    // Adjust by player type
-    if (zone.zone.includes('3') || zone.zone.includes('Corner')) {
-      if (isShooter) {
-        baseAttempts *= 2
-        efficiency += 0.04 + random() * 0.06
-      } else if (isBigMan) {
-        baseAttempts *= 0.3
-        efficiency -= 0.02
-      }
-    } else if (zone.zone.includes('Restricted') || zone.zone.includes('Paint')) {
-      if (isSlasher || isBigMan) {
-        baseAttempts *= 1.8
-        efficiency += 0.05 + random() * 0.05
-      } else if (isShooter) {
-        baseAttempts *= 0.6
-      }
-    } else {
-      // Mid-range
-      efficiency += (random() - 0.5) * 0.1
-    }
-    
-    // Add variation
-    efficiency += (random() - 0.5) * 0.08
-    efficiency = Math.max(0.25, Math.min(0.70, efficiency))
-    
-    const attempts = Math.max(5, Math.floor(baseAttempts))
-    const made = Math.floor(attempts * efficiency)
-    
-    return {
-      id: zone.id,
-      x: zone.x,
-      y: zone.y,
-      made,
-      attempts,
-      leagueAvg: zone.leagueAvg,
-      zone: zone.zone,
-    }
-  })
-}
-
 // Get color based on efficiency relative to league average
 // cheeks: red, inefficient: red-orange, below avg: orange, avg: yellow, above avg: yellow-green, excellent: green
 function getEfficiencyColor(made: number, attempts: number, leagueAvg: number): string {
@@ -166,12 +108,15 @@ export function HexShotChart({ selectedPlayer }: HexShotChartProps) {
       return
     }
 
+    let aborted = false
     const fetchZones = async () => {
       setIsLoading(true)
       try {
-        const res = await fetch(`${API_URL}/api/stats/shot-zones/${selectedPlayer.id}`)
+        const controller = new AbortController()
+        const res = await fetch(`${API_URL}/api/stats/shot-zones/${selectedPlayer.id}`, { signal: controller.signal })
         if (res.ok) {
           const data = await res.json()
+          if (aborted) return
           setUsingRealData(data.using_real_data)
           setApiStats({
             fgPct: data.fg_pct || 0,
@@ -196,24 +141,29 @@ export function HexShotChart({ selectedPlayer }: HexShotChartProps) {
               })
             }
           }
-          setZones(mappedZones)
+          if (!aborted) setZones(mappedZones)
         } else {
-          // Fallback to generated data
-          setZones(generatePlayerZones(selectedPlayer.id))
+          if (!aborted) {
+            setZones([])
+            setUsingRealData(false)
+          }
+        }
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === 'AbortError') return
+        // Suppress network errors when backend is offline — show empty state silently
+        if (!(err instanceof TypeError)) console.error('Failed to fetch shot zones:', err)
+        if (!aborted) {
+          setZones([])
           setUsingRealData(false)
         }
-      } catch (err) {
-        console.error('Failed to fetch shot zones:', err)
-        // Fallback to generated data
-        setZones(generatePlayerZones(selectedPlayer.id))
-        setUsingRealData(false)
       } finally {
-        setIsLoading(false)
+        if (!aborted) setIsLoading(false)
       }
     }
 
     fetchZones()
-  }, [selectedPlayer?.id, selectedPlayer])
+    return () => { aborted = true }
+  }, [selectedPlayer?.id])
 
   const stats = useMemo(() => {
     // Use API stats if available
@@ -362,7 +312,7 @@ export function HexShotChart({ selectedPlayer }: HexShotChartProps) {
           <circle cx="0" cy="40" r="8" fill="none" stroke="#EC4899" strokeWidth="3" />
           <rect x="-30" y="32" width="60" height="2" fill="#EC4899" />
           
-          {/* Empty State */}
+          {/* Empty State - no player selected */}
           {!selectedPlayer && (
             <g>
               <text x="0" y="160" textAnchor="middle" fill="#64748b" fontSize="16" fontFamily="sans-serif">
@@ -370,6 +320,21 @@ export function HexShotChart({ selectedPlayer }: HexShotChartProps) {
               </text>
               <text x="0" y="185" textAnchor="middle" fill="#475569" fontSize="12" fontFamily="sans-serif">
                 Use the search above to find a player
+              </text>
+            </g>
+          )}
+
+          {/* No data state - player selected but no shots in DB */}
+          {selectedPlayer && !isLoading && zones.length === 0 && (
+            <g>
+              <text x="0" y="150" textAnchor="middle" fill="#64748b" fontSize="15" fontFamily="sans-serif">
+                No shot chart data available
+              </text>
+              <text x="0" y="172" textAnchor="middle" fill="#475569" fontSize="11" fontFamily="sans-serif">
+                for {selectedPlayer.name}
+              </text>
+              <text x="0" y="196" textAnchor="middle" fill="#374151" fontSize="10" fontFamily="sans-serif">
+                Run the sync script to populate the database
               </text>
             </g>
           )}
