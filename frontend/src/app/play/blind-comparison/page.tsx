@@ -91,6 +91,7 @@ export default function BlindComparisonPage() {
   const [score, setScore] = useState(0)
   const [gameOver, setGameOver] = useState(false)
   const [correctCount, setCorrectCount] = useState(0)
+  const [correctStreak, setCorrectStreak] = useState(0)
   const [gameStartTime, setGameStartTime] = useState(0)
   
   const currentComparison = matchups[currentIndex]
@@ -124,8 +125,23 @@ export default function BlindComparisonPage() {
     if (allPlayers.length >= 2) {
       setMatchups(generateMatchups(allPlayers, 5))
       setGameStartTime(Date.now())
+      if (soundEnabled) sounds.startGame()
     }
-  }, [allPlayers])
+  }, [allPlayers, soundEnabled])
+
+  useEffect(() => {
+    if (soundEnabled && matchups.length > 0 && !gameOver) {
+      sounds.startGameMusicLoop()
+      return
+    }
+    sounds.stopGameMusicLoop()
+  }, [soundEnabled, matchups.length, gameOver])
+
+  useEffect(() => {
+    return () => {
+      sounds.stopGameMusicLoop()
+    }
+  }, [])
 
   // Keyboard controls: Enter = submit selection when not revealed, next when revealed
   useKeyboardControls({
@@ -165,9 +181,12 @@ export default function BlindComparisonPage() {
     if (choice === winner) {
       setScore(prev => prev + 100)
       setCorrectCount(prev => prev + 1)
-      if (soundEnabled) sounds.correct()
+      const nextStreak = correctStreak + 1
+      setCorrectStreak(nextStreak)
+      if (soundEnabled) sounds.gameCorrect(nextStreak, currentIndex >= matchups.length - 1)
     } else {
-      if (soundEnabled) sounds.wrong()
+      setCorrectStreak(0)
+      if (soundEnabled) sounds.gameWrong()
     }
   }
 
@@ -175,6 +194,7 @@ export default function BlindComparisonPage() {
     if (currentIndex >= matchups.length - 1) {
       setGameOver(true)
       saveScore()
+      sounds.stopGameMusicLoop()
       if (soundEnabled) sounds.victory()
       return
     }
@@ -193,8 +213,9 @@ export default function BlindComparisonPage() {
     setScore(0)
     setGameOver(false)
     setCorrectCount(0)
+    setCorrectStreak(0)
     setGameStartTime(Date.now())
-    if (soundEnabled) sounds.click()
+    if (soundEnabled) sounds.startGame()
   }
 
   // Loading state

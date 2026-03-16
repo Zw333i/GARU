@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { motion } from 'framer-motion'
+import { BasketballIcon } from '@/components/icons'
 
 export default function NotFound() {
   return (
@@ -11,7 +12,11 @@ export default function NotFound() {
         animate={{ opacity: 1, y: 0 }}
         className="text-center"
       >
-        <div className="text-8xl mb-4">🏀</div>
+        <div className="mb-4 flex justify-center">
+          <div className="w-24 h-24 rounded-full bg-gunmetal/40 flex items-center justify-center">
+            <BasketballIcon size={56} className="text-electric-lime" />
+          </div>
+        </div>
         <h1 className="text-4xl font-display font-bold mb-2">
           <span className="text-hot-pink">404</span> - Air Ball!
         </h1>

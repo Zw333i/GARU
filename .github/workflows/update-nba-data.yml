@@ -22,13 +22,13 @@ jobs:
           cd backend
           pip install -r requirements.txt
 
-      - name: Run data fetch script
+      - name: Run full Supabase sync script
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
           cd backend
-          python scripts/fetch_nba_data.py
+          python scripts/sync_to_supabase.py
 
       - name: Upload data artifact (if local JSON generated)
         uses: actions/upload-artifact@v4

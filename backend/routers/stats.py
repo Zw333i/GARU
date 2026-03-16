@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict
 import io
 import os
+from datetime import datetime, timedelta, timezone
 
 # Try to import visualization libraries
 try:
@@ -26,6 +27,9 @@ except ImportError:
 from services.nba_service import get_supabase_client
 
 router = APIRouter()
+
+# Refresh shot chart cache periodically so heatmaps stay accurate as season progresses.
+SHOT_CACHE_MAX_AGE_HOURS = 24 * 7
 
 
 # ---------------------------------------------------------------------------
@@ -200,10 +204,25 @@ def _save_shot_data(player_id: int, season: str, shots: list, zones: list,
             "fg_pct": fg_pct,
             "three_pct": three_pct,
             "paint_pct": paint_pct,
+            "cached_at": datetime.now(timezone.utc).isoformat(),
         }, on_conflict="player_id,season").execute()
         print(f"Saved shot chart for player {player_id} ({season}) to Supabase")
     except Exception as e:
         print(f"Warning: Supabase write error (shot_charts): {e}")
+
+
+def _is_shot_cache_fresh(row: dict) -> bool:
+    """Return True if cached shot data is still within freshness window."""
+    try:
+        cached_at = row.get("cached_at")
+        if not cached_at:
+            return False
+
+        cached_dt = datetime.fromisoformat(str(cached_at).replace("Z", "+00:00"))
+        age = datetime.now(timezone.utc) - cached_dt
+        return age <= timedelta(hours=SHOT_CACHE_MAX_AGE_HOURS)
+    except Exception:
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -330,16 +349,20 @@ def _compute_zones_from_shots(shots: list):
 # Core fetch: DB first, NBA API fallback, save to DB
 # ---------------------------------------------------------------------------
 
-def _fetch_and_cache_shot_data(player_id: int, season: str):
+def _fetch_and_cache_shot_data(player_id: int, season: str, force_refresh: bool = False):
     """
     Return shot data row. Checks Supabase first; if missing fetches from
     NBA API, saves to Supabase, and returns. Returns None if no data exists.
     Never generates simulated data.
     """
     row = _get_cached_shots(player_id, season)
-    if row:
+    if row and not force_refresh and _is_shot_cache_fresh(row):
         print(f"Cache hit: shot chart for player {player_id} ({season})")
         return row
+    if row and force_refresh:
+        print(f"Cache bypassed: force refreshing shot chart for player {player_id} ({season})")
+    elif row:
+        print(f"Cache stale: refreshing shot chart for player {player_id} ({season})")
 
     print(f"Fetching shot chart from NBA API for player {player_id} ({season})...")
     shots = []
@@ -405,9 +428,9 @@ def _fetch_and_cache_shot_data(player_id: int, season: str):
 # ---------------------------------------------------------------------------
 
 @router.get("/shot-chart/{player_id}")
-async def get_shot_chart(player_id: int, season: str = "2024-25"):
+async def get_shot_chart(player_id: int, season: str = "2025-26", refresh: bool = False):
     """Individual shot dots. DB-first, never simulated."""
-    row = _fetch_and_cache_shot_data(player_id, season)
+    row = _fetch_and_cache_shot_data(player_id, season, force_refresh=refresh)
     if not row:
         return {
             "player_id": player_id,
@@ -436,9 +459,9 @@ async def get_shot_chart(player_id: int, season: str = "2024-25"):
 
 
 @router.get("/shot-zones/{player_id}")
-async def get_shot_zones(player_id: int, season: str = "2024-25"):
+async def get_shot_zones(player_id: int, season: str = "2025-26", refresh: bool = False):
     """Hex bin zones. DB-first, never simulated."""
-    row = _fetch_and_cache_shot_data(player_id, season)
+    row = _fetch_and_cache_shot_data(player_id, season, force_refresh=refresh)
     if not row:
         return {"player_id": player_id, "using_real_data": False, "total_shots": 0, "fg_pct": 0, "three_pct": 0, "paint_pct": 0, "zones": []}
     return {
@@ -453,9 +476,9 @@ async def get_shot_zones(player_id: int, season: str = "2024-25"):
 
 
 @router.get("/shot-distribution/{player_id}")
-async def get_shot_distribution(player_id: int, season: str = "2024-25"):
+async def get_shot_distribution(player_id: int, season: str = "2025-26", refresh: bool = False):
     """Five-zone shot distribution. DB-first, never simulated."""
-    row = _fetch_and_cache_shot_data(player_id, season)
+    row = _fetch_and_cache_shot_data(player_id, season, force_refresh=refresh)
     if not row:
         return {"player_id": player_id, "using_real_data": False, "total_shots": 0, "zones": []}
     return {
@@ -467,15 +490,16 @@ async def get_shot_distribution(player_id: int, season: str = "2024-25"):
 
 
 @router.get("/heatmap/{player_id}")
-async def get_player_heatmap(player_id: int, season: str = "2024-25"):
+async def get_player_heatmap(player_id: int, season: str = "2025-26", refresh: bool = False):
     """
-    KDE heatmap PNG generated from authenticated shot data in Supabase.
+    Smooth KDE heatmap PNG generated from authenticated shot data in Supabase.
+    Yellow represents highest shot-frequency intensity.
     Returns 404 if no data is available (run sync script to populate DB).
     """
     if not HAS_VISUALIZATION:
         raise HTTPException(status_code=500, detail="Visualization libraries not installed. Run: pip install matplotlib numpy scipy")
 
-    row = _fetch_and_cache_shot_data(player_id, season)
+    row = _fetch_and_cache_shot_data(player_id, season, force_refresh=refresh)
     if not row or not row.get("shots"):
         raise HTTPException(status_code=404, detail="No shot data available for this player. Run the sync script to populate the database.")
 
@@ -498,18 +522,26 @@ async def get_player_heatmap(player_id: int, season: str = "2024-25"):
         y_grid = np.linspace(-50, 300, 438)
         X, Y = np.meshgrid(x_grid, y_grid)
         Z = kde(np.vstack([X.ravel(), Y.ravel()])).reshape(X.shape)
+
+        # Dynamic-range compression keeps low-activity regions visible
+        # while preserving the highest-intensity zones as yellow.
         Z_power = np.power(Z, 0.5)
-        Z_min, Z_max = Z_power.min(), Z_power.max()
-        Z_norm = (Z_power - Z_min) / (Z_max - Z_min) if Z_max > Z_min else Z_power
+        z_max = float(Z_power.max()) if Z_power.size else 0.0
+        if z_max > 0:
+            Z_norm = Z_power / z_max
+        else:
+            Z_norm = Z_power
+
         from matplotlib.colors import LinearSegmentedColormap
         cmap = LinearSegmentedColormap.from_list('smooth_heat', [
-            (0.00, '#000000'), (0.10, '#1a0a24'), (0.25, '#4a1076'),
-            (0.40, '#8b1a6b'), (0.55, '#c92e4a'), (0.70, '#e85a2c'),
-            (0.85, '#f99c1c'), (1.00, '#fcec38'),
+            (0.00, '#000000'), (0.12, '#1a0a24'), (0.28, '#4a1076'),
+            (0.45, '#8b1a6b'), (0.62, '#c92e4a'), (0.78, '#e85a2c'),
+            (0.90, '#f99c1c'), (1.00, '#fcec38'),
         ])
+
         im = ax.contourf(X, Y, Z_norm, levels=50, cmap=cmap, antialiased=True)
     except Exception as e:
-        print(f"KDE failed: {e}")
+        print(f"KDE heatmap generation failed: {e}")
 
     theta = np.linspace(np.arcsin(90 / 237.5), np.pi - np.arcsin(90 / 237.5), 100)
     ax.plot(237.5 * np.cos(theta), 237.5 * np.sin(theta), color=court_color, linewidth=court_lw, zorder=10)
@@ -534,17 +566,10 @@ async def get_player_heatmap(player_id: int, season: str = "2024-25"):
     ax.set_title(f'Shot Distribution Heatmap ({len(shots)} shots)', color='white', fontsize=16, pad=10, fontweight='bold')
 
     if im is not None:
-        from matplotlib.colors import LinearSegmentedColormap
-        import matplotlib.cm as cm
-        legend_cmap = LinearSegmentedColormap.from_list('legend_heat', [
-            '#000000', '#1a0a24', '#4a1076', '#8b1a6b', '#c92e4a', '#e85a2c', '#f99c1c', '#fcec38'
-        ])
-        sm = cm.ScalarMappable(cmap=legend_cmap)
-        sm.set_array([])
-        cbar = plt.colorbar(sm, cax=cax, orientation='horizontal')
-        cbar.set_ticks([0, 0.5, 1.0])
+        cbar = plt.colorbar(im, cax=cax, orientation='horizontal')
+        cbar.set_ticks([0.0, 0.5, 1.0])
         cbar.set_ticklabels(['lower', 'Shot frequency', 'higher'])
-        cbar.ax.xaxis.set_tick_params(color='white', labelsize=11)
+        cbar.ax.xaxis.set_tick_params(color='white', labelsize=10)
         plt.setp(cbar.ax.xaxis.get_ticklabels(), color='white')
         cax.set_facecolor('#000000')
         cbar.outline.set_edgecolor('#333333')
@@ -557,7 +582,7 @@ async def get_player_heatmap(player_id: int, season: str = "2024-25"):
 
 
 @router.get("/player-efficiency/{player_id}")
-async def get_player_efficiency(player_id: int, season: str = "2024-25"):
+async def get_player_efficiency(player_id: int, season: str = "2025-26"):
     """
     Compute TS% and eFG% from cached_players (Supabase).
     Requires fga and fta in season_stats (populated by sync script).

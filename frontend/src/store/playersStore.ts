@@ -43,12 +43,15 @@ interface PlayersState {
   error: string | null
   
   // Actions
-  fetchPlayers: () => Promise<void>
+  fetchPlayers: (force?: boolean) => Promise<void>
   getPlayerById: (id: number) => CachedPlayer | undefined
   getRandomPlayers: (count: number, minGames?: number) => CachedPlayer[]
   searchPlayers: (query: string) => CachedPlayer[]
   reset: () => void
 }
+
+// Session cache refresh window (6 hours)
+const CACHE_MAX_AGE_MS = 6 * 60 * 60 * 1000
 
 // Fallback players for when Supabase is unavailable
 const FALLBACK_PLAYERS: CachedPlayer[] = [
@@ -122,31 +125,36 @@ export const usePlayersStore = create<PlayersState>()(
       lastFetchedAt: null,
       error: null,
 
-      fetchPlayers: async () => {
+      fetchPlayers: async (force = false) => {
         const state = get()
+        const isStale = !state.lastFetchedAt || (Date.now() - state.lastFetchedAt) > CACHE_MAX_AGE_MS
         
         // Skip if currently loading
         if (state.isLoading) {
-          console.log('📦 Already loading players, skipping')
+          console.log('[CACHE] Already loading players, skipping')
           return
         }
         
         // Force refresh if we have too few players (fallback data)
         const hasEnoughPlayers = state.players.length > 100
         
-        // Skip if already loaded with real data
-        if (state.isLoaded && hasEnoughPlayers) {
-          console.log(`📦 Players already cached (${state.players.length}), skipping fetch`)
+        // Skip if already loaded with sufficiently fresh real data
+        if (!force && state.isLoaded && hasEnoughPlayers && !isStale) {
+          console.log(`[CACHE] Players already cached (${state.players.length}), skipping fetch`)
           return
         }
         
         // If we have cached fallback data, we need to refetch
-        if (state.isLoaded && !hasEnoughPlayers) {
-          console.log('🔄 Detected fallback data, forcing refresh from database...')
+        if (force) {
+          console.log('[REFRESH] Force refreshing players from database...')
+        } else if (state.isLoaded && !hasEnoughPlayers) {
+          console.log('[REFRESH] Detected fallback data, forcing refresh from database...')
+        } else if (state.isLoaded && hasEnoughPlayers && isStale) {
+          console.log('[REFRESH] Player cache is stale, refreshing from database...')
         }
 
         set({ isLoading: true, error: null })
-        console.log('🏀 Fetching players from database...')
+        console.log('[FETCH] Fetching players from database...')
 
         try {
           const { data, error } = await supabase
@@ -218,7 +226,7 @@ export const usePlayersStore = create<PlayersState>()(
             const stars = mappedPlayers.filter(p => p.ppg >= 20)
             const rolePlayers = mappedPlayers.filter(p => p.ppg >= 8 && p.ppg < 18)
 
-            console.log(`✅ Cached ${mappedPlayers.length} players (${stars.length} stars, ${rolePlayers.length} role players)`)
+            console.log(`[OK] Cached ${mappedPlayers.length} players (${stars.length} stars, ${rolePlayers.length} role players)`)
             
             set({
               players: mappedPlayers,

@@ -183,7 +183,7 @@ export default function ProfilePage() {
         setIsUploading(false)
       }, 100)
       
-      console.log('✅ Avatar uploaded successfully:', avatarUrl)
+      console.log('[OK] Avatar uploaded successfully:', avatarUrl)
       return // Exit early since we set isUploading in setTimeout
     } catch (err) {
       console.error('Avatar upload failed:', err)

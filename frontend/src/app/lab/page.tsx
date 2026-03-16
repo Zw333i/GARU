@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { HexShotChart } from '@/components/lab/HexShotChart'
@@ -37,6 +37,9 @@ export default function LabPage() {
   const [heatmapUrl, setHeatmapUrl] = useState<string | null>(null)
   const [heatmapError, setHeatmapError] = useState<string | null>(null)
   const [showFullscreen, setShowFullscreen] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  const [heatmapRefreshKey, setHeatmapRefreshKey] = useState(0)
+  const forceHeatmapRefreshRef = useRef(false)
 
   // Ensure players are loaded (uses session cache)
   useEffect(() => {
@@ -98,7 +101,7 @@ export default function LabPage() {
       try {
         // Add cache-busting timestamp to prevent browser caching
         const timestamp = Date.now()
-        const response = await fetch(`${API_URL}/api/stats/heatmap/${selectedPlayer.id}?t=${timestamp}`, {
+        const response = await fetch(`${API_URL}/api/stats/heatmap/${selectedPlayer.id}?t=${timestamp}&refresh=${forceHeatmapRefreshRef.current ? 'true' : 'false'}`, {
           cache: 'no-store',
           headers: {
             'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -118,6 +121,7 @@ export default function LabPage() {
         setHeatmapError('Backend not available. Heatmap data could not be loaded.')
         setHeatmapUrl(null)
       } finally {
+        forceHeatmapRefreshRef.current = false
         setHeatmapLoading(false)
       }
     }
@@ -130,7 +134,23 @@ export default function LabPage() {
         URL.revokeObjectURL(currentUrl)
       }
     }
-  }, [selectedPlayer?.id])
+  }, [selectedPlayer?.id, heatmapRefreshKey])
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true)
+    try {
+      // Force players refresh from Supabase even if session cache is warm.
+      await fetchPlayers(true)
+
+      // Force heatmap refresh for currently selected player.
+      if (selectedPlayer) {
+        forceHeatmapRefreshRef.current = true
+        setHeatmapRefreshKey((k) => k + 1)
+      }
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
 
   const handleSelect = async (player: Player) => {
     setSelectedPlayer(player)
@@ -181,7 +201,29 @@ export default function LabPage() {
       {/* Player Search - z-40 to ensure dropdown appears above shot chart */}
       <section className="mb-8 relative z-40">
         <div className="glass rounded-2xl p-6">
-          <h2 className="text-lg font-display font-bold mb-4">Select Player</h2>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-lg font-display font-bold">Select Player</h2>
+            <button
+              onClick={handleManualRefresh}
+              disabled={isRefreshing || playersLoading}
+              className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-surface text-ghost-white text-sm font-medium hover:bg-surface/80 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+              title="Refresh player stats and heatmap data"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className={isRefreshing ? 'animate-spin' : ''}
+              >
+                <path d="M21 12a9 9 0 11-2.64-6.36" />
+                <path d="M21 3v6h-6" />
+              </svg>
+              {isRefreshing ? 'Refreshing...' : 'Refresh Data'}
+            </button>
+          </div>
           
           <div className="relative">
             <input
@@ -272,7 +314,7 @@ export default function LabPage() {
         {/* Shot Chart - passes selected player */}
         <div className="lg:col-span-2 flex">
           <div className="w-full">
-            <HexShotChart selectedPlayer={selectedPlayer} />
+            <HexShotChart selectedPlayer={selectedPlayer} refreshKey={heatmapRefreshKey} />
           </div>
         </div>
 
@@ -363,7 +405,7 @@ export default function LabPage() {
               {/* Shot Distribution Bar Chart - Below Heatmap */}
               {selectedPlayer && (
                 <div className="mt-4">
-                  <ShotDistributionChart selectedPlayer={selectedPlayer} />
+                  <ShotDistributionChart selectedPlayer={selectedPlayer} refreshKey={heatmapRefreshKey} />
                 </div>
               )}
             </div>

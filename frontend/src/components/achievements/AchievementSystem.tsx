@@ -3,7 +3,45 @@
 import { useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAchievementStore, Achievement, ACHIEVEMENTS } from '@/store/achievementStore'
-import { TrophyIcon, CheckIcon } from '@/components/icons'
+import {
+  TrophyIcon,
+  CheckIcon,
+  FireIcon,
+  CrownIcon,
+  StarIcon,
+  ChartIcon,
+  ClockIcon,
+  LeaderboardIcon,
+  JourneyIcon,
+  CompareIcon,
+  SearchIcon,
+  ArrowRightIcon,
+  TargetIcon,
+  PlayIcon,
+  SwordsIcon,
+} from '@/components/icons'
+
+function AchievementIcon({ icon, className = '', size = 28 }: { icon: string; className?: string; size?: number }) {
+  type IconComponent = (props: { className?: string; size?: number }) => JSX.Element
+  const map: Record<string, IconComponent> = {
+    trophy: TrophyIcon,
+    fire: FireIcon,
+    swords: SwordsIcon,
+    crown: CrownIcon,
+    star: StarIcon,
+    chart: ChartIcon,
+    clock: ClockIcon,
+    leaderboard: LeaderboardIcon,
+    journey: JourneyIcon,
+    compare: CompareIcon,
+    search: SearchIcon,
+    'arrow-up': ArrowRightIcon,
+    target: TargetIcon,
+    play: PlayIcon,
+  }
+  const Icon = map[icon] || TrophyIcon
+  return <Icon className={className} size={size} />
+}
 
 // Toast notification for newly unlocked achievement
 export function AchievementToast() {
@@ -28,11 +66,11 @@ export function AchievementToast() {
           className="fixed top-4 left-1/2 -translate-x-1/2 z-50"
         >
           <div className="glass rounded-2xl p-4 flex items-center gap-4 shadow-2xl border border-electric-lime/30">
-            <div className="text-4xl">{recentUnlock.icon}</div>
+            <div className="w-12 h-12 rounded-xl bg-electric-lime/10 flex items-center justify-center">
+              <AchievementIcon icon={recentUnlock.icon} size={28} className="text-electric-lime" />
+            </div>
             <div>
-              <p className="text-sm text-electric-lime font-medium">
-                🎉 Achievement Unlocked!
-              </p>
+              <p className="text-sm text-electric-lime font-medium">Achievement Unlocked</p>
               <p className="font-display font-bold text-lg">
                 {recentUnlock.name}
               </p>
@@ -88,7 +126,11 @@ export function AchievementCard({
             isUnlocked ? 'bg-electric-lime/20' : 'bg-gunmetal'
           }`}
         >
-          {achievement.icon}
+          <AchievementIcon
+            icon={achievement.icon}
+            size={26}
+            className={isUnlocked ? 'text-electric-lime' : 'text-muted'}
+          />
         </div>
         <div className="flex-1">
           <h4 className="font-medium">{achievement.name}</h4>

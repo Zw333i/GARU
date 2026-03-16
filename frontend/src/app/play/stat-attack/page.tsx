@@ -91,6 +91,7 @@ export default function StatAttackPage() {
   const [gameOver, setGameOver] = useState(false)
   const [usedPlayers, setUsedPlayers] = useState<number[]>([])
   const [correctCount, setCorrectCount] = useState(0)
+  const [correctStreak, setCorrectStreak] = useState(0)
   const [gameStartTime, setGameStartTime] = useState(Date.now())
 
   // Save score when game ends
@@ -138,8 +139,23 @@ export default function StatAttackPage() {
   useEffect(() => {
     if (players.length > 0 && !currentPlayer) {
       initRound()
+      if (soundEnabled) sounds.startGame()
     }
-  }, [players])
+  }, [players, soundEnabled])
+
+  useEffect(() => {
+    if (soundEnabled && !gameOver && currentPlayer) {
+      sounds.startGameMusicLoop()
+      return
+    }
+    sounds.stopGameMusicLoop()
+  }, [soundEnabled, gameOver, currentPlayer])
+
+  useEffect(() => {
+    return () => {
+      sounds.stopGameMusicLoop()
+    }
+  }, [])
 
   // Keyboard controls: Enter = submit first, then next
   useKeyboardControls({
@@ -200,9 +216,12 @@ export default function StatAttackPage() {
     // Close guess counts as correct (within 2)
     if (difference < 2) {
       setCorrectCount(prev => prev + 1)
-      if (soundEnabled) sounds.correct()
+      const nextStreak = correctStreak + 1
+      setCorrectStreak(nextStreak)
+      if (soundEnabled) sounds.gameCorrect(nextStreak, round >= maxRounds)
     } else {
-      if (soundEnabled) sounds.wrong()
+      setCorrectStreak(0)
+      if (soundEnabled) sounds.gameWrong()
     }
   }
 
@@ -210,11 +229,11 @@ export default function StatAttackPage() {
     if (round >= maxRounds) {
       setGameOver(true)
       saveScore()
+      sounds.stopGameMusicLoop()
       if (soundEnabled) sounds.victory()
     } else {
       setRound(prev => prev + 1)
       initRound()
-      if (soundEnabled) sounds.click()
     }
   }
 
@@ -225,9 +244,10 @@ export default function StatAttackPage() {
     setUsedPlayers([])
     setGameOver(false)
     setCorrectCount(0)
+    setCorrectStreak(0)
     setGameStartTime(Date.now())
     initRound()
-    if (soundEnabled) sounds.click()
+    if (soundEnabled) sounds.startGame()
   }
 
   const getAccuracyIcon = (diff: number) => {

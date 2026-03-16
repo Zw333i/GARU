@@ -54,7 +54,17 @@ export default function WhosThatPage() {
   const [gameOver, setGameOver] = useState(false)
   const [timedOut, setTimedOut] = useState(false)
   const [correctCount, setCorrectCount] = useState(0)
+  const [correctStreak, setCorrectStreak] = useState(0)
   const [gameStartTime, setGameStartTime] = useState<number>(0)
+
+  const startGameMusic = useCallback(() => {
+    if (!soundEnabled) return
+    sounds.startGameMusicLoop()
+  }, [soundEnabled])
+
+  const stopGameMusic = useCallback(() => {
+    sounds.stopGameMusicLoop()
+  }, [])
 
 
   const hints = currentPlayer ? [
@@ -69,8 +79,18 @@ export default function WhosThatPage() {
       if (timerRef.current) {
         clearInterval(timerRef.current)
       }
+      stopGameMusic()
     }
-  }, [])
+  }, [stopGameMusic])
+
+  // Keep background music active only while playing.
+  useEffect(() => {
+    if (gameStarted && !gameOver && soundEnabled) {
+      startGameMusic()
+      return
+    }
+    stopGameMusic()
+  }, [gameStarted, gameOver, soundEnabled, startGameMusic, stopGameMusic])
 
   // Timer logic
   useEffect(() => {
@@ -108,7 +128,8 @@ export default function WhosThatPage() {
     setTimedOut(true)
     setIsCorrect(false)
     setRevealed(true)
-    if (soundEnabled) sounds.wrong()
+    setCorrectStreak(0)
+    if (soundEnabled) sounds.gameWrong()
   }, [currentPlayer, revealed, soundEnabled])
 
   // Initialize first player when game starts
@@ -129,7 +150,8 @@ export default function WhosThatPage() {
     setTimeLeft(TIMER_DURATION)
     setGameStartTime(Date.now())
     setCorrectCount(0)
-    if (soundEnabled) sounds.click()
+    setCorrectStreak(0)
+    if (soundEnabled) sounds.startGame()
     setTimeout(() => inputRef.current?.focus(), 100)
   }
 
@@ -182,9 +204,12 @@ export default function WhosThatPage() {
       }
       setScore(prev => prev + points)
       setCorrectCount(prev => prev + 1)
-      if (soundEnabled) sounds.correct()
+      const nextStreak = correctStreak + 1
+      setCorrectStreak(nextStreak)
+      if (soundEnabled) sounds.gameCorrect(nextStreak, round >= questionCount)
     } else {
-      if (soundEnabled) sounds.wrong()
+      setCorrectStreak(0)
+      if (soundEnabled) sounds.gameWrong()
     }
     setRevealed(true)
   }
@@ -218,7 +243,7 @@ export default function WhosThatPage() {
   const nextRound = () => {
     if (round >= questionCount) {
       setGameOver(true)
-      if (soundEnabled) sounds.victory()
+      stopGameMusic()
       // Save score when game ends — correctCount already updated by handleGuess
       saveScore(score, correctCount)
       return
@@ -234,7 +259,6 @@ export default function WhosThatPage() {
     setRound(round + 1)
     setTimeLeft(TIMER_DURATION)
     setTimedOut(false)
-    if (soundEnabled) sounds.click()
     
     // Focus input for next round
     setTimeout(() => inputRef.current?.focus(), 100)
@@ -261,8 +285,9 @@ export default function WhosThatPage() {
     setTimeLeft(TIMER_DURATION)
     setTimedOut(false)
     setCorrectCount(0)
+    setCorrectStreak(0)
     setGameStartTime(0)
-    if (soundEnabled) sounds.click()
+    stopGameMusic()
   }
 
   // Loading state with basketball loader animation
@@ -407,11 +432,12 @@ export default function WhosThatPage() {
           <div className="relative w-48 h-48 mx-auto mb-6">
             <div className="w-full h-full rounded-2xl bg-gunmetal overflow-hidden border-4 border-surface">
               <img
-                src={`https://cdn.nba.com/headshots/nba/latest/260x190/${currentPlayer.id}.png`}
+                key={`${currentPlayer.id}-${round}`}
+                src={`https://cdn.nba.com/headshots/nba/latest/260x190/${currentPlayer.id}.png?v=${round}`}
                 alt="Mystery Player"
                 className="w-full h-full object-cover"
                 onError={(e) => {
-                  (e.target as HTMLImageElement).src = `https://ak-static.cms.nba.com/wp-content/uploads/headshots/nba/latest/260x190/${currentPlayer.id}.png`
+                  (e.target as HTMLImageElement).src = `https://ak-static.cms.nba.com/wp-content/uploads/headshots/nba/latest/260x190/${currentPlayer.id}.png?v=${round}`
                 }}
               />
             </div>

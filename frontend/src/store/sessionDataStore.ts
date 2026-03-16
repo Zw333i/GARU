@@ -102,7 +102,7 @@ export const useSessionDataStore = create<SessionDataState>()(
         
         // If different user, clear cache
         if (state.userId && state.userId !== userId) {
-          console.log('👤 User changed, clearing session cache')
+          console.log('[USER] User changed, clearing session cache')
           set({
             userStats: null,
             achievements: [],
@@ -114,7 +114,7 @@ export const useSessionDataStore = create<SessionDataState>()(
         
         // Skip if already loaded for this user
         if (state.isStatsLoaded && state.userId === userId) {
-          console.log('📦 User stats already cached, skipping fetch')
+          console.log('[CACHE] User stats already cached, skipping fetch')
           return
         }
         
@@ -124,7 +124,7 @@ export const useSessionDataStore = create<SessionDataState>()(
         }
 
         set({ isStatsLoading: true, statsError: null, userId })
-        console.log('📊 Fetching user stats from database...')
+        console.log('[FETCH] Fetching user stats from database...')
 
         try {
           // Fetch user stats
@@ -194,7 +194,7 @@ export const useSessionDataStore = create<SessionDataState>()(
             // Game history table might not exist
           }
 
-          console.log(`✅ Loaded user stats (Level ${stats.level}, ${stats.gamesPlayed} games)`)
+          console.log(`[OK] Loaded user stats (Level ${stats.level}, ${stats.gamesPlayed} games)`)
           
           set({
             userStats: stats,

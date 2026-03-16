@@ -177,9 +177,8 @@ def main():
     # Get all active players
     active_players = get_active_players()
     
-    # Limit to top players for initial testing (remove in production)
-    # In production, process all players but with proper rate limiting
-    players_to_process = active_players[:50]  # Adjust as needed
+    # Process all active players
+    players_to_process = active_players
     
     enriched_players = []
     

@@ -7,8 +7,6 @@ import { useAuthStore } from '@/store/authStore'
 import { useSessionDataStore } from '@/store/sessionDataStore'
 import { motion, AnimatePresence } from 'framer-motion'
 import { 
-  SunIcon, 
-  MoonIcon, 
   VolumeOnIcon, 
   VolumeOffIcon,
   BasketballIcon
@@ -40,7 +38,7 @@ function formatRelativeTime(dateStr: string): string {
 }
 
 export function Header() {
-  const { theme, toggleTheme, soundEnabled, toggleSound } = useSettingsStore()
+  const { soundEnabled, toggleSound } = useSettingsStore()
   const { user, isAuthenticated } = useAuthStore()
   const { gameHistory, achievements, isStatsLoaded } = useSessionDataStore()
   
@@ -128,11 +126,7 @@ export function Header() {
   // Prevent hydration mismatch
   useEffect(() => {
     setMounted(true)
-    // Apply theme on mount
-    if (typeof document !== 'undefined') {
-      document.documentElement.classList.toggle('light-mode', theme === 'light')
-    }
-  }, [theme])
+  }, [])
 
   // Close notifications on click outside
   useEffect(() => {
@@ -173,21 +167,6 @@ export function Header() {
 
         {/* Right Section */}
         <div className="flex items-center gap-2">
-          {/* Theme Toggle */}
-          {mounted && (
-            <button
-              onClick={toggleTheme}
-              className="p-2 text-muted hover:text-ghost-white transition-colors rounded-lg hover:bg-surface"
-              title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            >
-              {theme === 'dark' ? (
-                <SunIcon size={20} />
-              ) : (
-                <MoonIcon size={20} />
-              )}
-            </button>
-          )}
-
           {/* Sound Toggle */}
           {mounted && (
             <button

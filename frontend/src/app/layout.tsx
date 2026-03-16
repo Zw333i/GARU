@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from 'next'
 import './globals.css'
 import { BottomNav } from '@/components/layout/BottomNav'
 import { Header } from '@/components/layout/Header'
-import { ThemeProvider } from '@/components/providers/ThemeProvider'
 import { AuthProvider } from '@/components/providers/AuthProvider'
 import { AchievementToast } from '@/components/achievements/AchievementSystem'
 
@@ -27,7 +26,7 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
-  themeColor: '#0F172A',
+  themeColor: '#1F2126',
 }
 
 export default function RootLayout({
@@ -38,16 +37,14 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen bg-deep-void text-ghost-white antialiased">
-        <ThemeProvider>
-          <AuthProvider>
-            <Header />
-            <main className="pb-20 md:pb-0 md:pl-20">
-              {children}
-            </main>
-            <BottomNav />
-            <AchievementToast />
-          </AuthProvider>
-        </ThemeProvider>
+        <AuthProvider>
+          <Header />
+          <main className="pb-20 md:pb-0 md:pl-20">
+            {children}
+          </main>
+          <BottomNav />
+          <AchievementToast />
+        </AuthProvider>
       </body>
     </html>
   )

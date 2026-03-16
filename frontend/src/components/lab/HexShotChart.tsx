@@ -23,6 +23,7 @@ interface HexZone {
 
 interface HexShotChartProps {
   selectedPlayer?: Player | null
+  refreshKey?: number
 }
 
 const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/+$/, '')
@@ -93,7 +94,7 @@ function hexPath(cx: number, cy: number, size: number): string {
   return `M ${points.join(' L ')} Z`
 }
 
-export function HexShotChart({ selectedPlayer }: HexShotChartProps) {
+export function HexShotChart({ selectedPlayer, refreshKey = 0 }: HexShotChartProps) {
   const [zones, setZones] = useState<HexZone[]>([])
   const [hoveredZone, setHoveredZone] = useState<HexZone | null>(null)
   const [isLoading, setIsLoading] = useState(false)
@@ -113,7 +114,7 @@ export function HexShotChart({ selectedPlayer }: HexShotChartProps) {
       setIsLoading(true)
       try {
         const controller = new AbortController()
-        const res = await fetch(`${API_URL}/api/stats/shot-zones/${selectedPlayer.id}`, { signal: controller.signal })
+        const res = await fetch(`${API_URL}/api/stats/shot-zones/${selectedPlayer.id}?t=${Date.now()}`, { signal: controller.signal })
         if (res.ok) {
           const data = await res.json()
           if (aborted) return
@@ -163,7 +164,7 @@ export function HexShotChart({ selectedPlayer }: HexShotChartProps) {
 
     fetchZones()
     return () => { aborted = true }
-  }, [selectedPlayer?.id])
+  }, [selectedPlayer?.id, refreshKey])
 
   const stats = useMemo(() => {
     // Use API stats if available

@@ -32,9 +32,25 @@ export default function JourneyPage() {
   const [visibleTeams, setVisibleTeams] = useState(1)
   const [gameOver, setGameOver] = useState(false)
   const [correctCount, setCorrectCount] = useState(0)
+  const [correctStreak, setCorrectStreak] = useState(0)
   const [gameStartTime, setGameStartTime] = useState(Date.now())
   const [roundStartTime, setRoundStartTime] = useState(Date.now())
   const [answerTimes, setAnswerTimes] = useState<number[]>([])
+
+  // Background game music for active rounds.
+  useEffect(() => {
+    if (soundEnabled && !gameOver && currentPlayer) {
+      sounds.startGameMusicLoop()
+      return
+    }
+    sounds.stopGameMusicLoop()
+  }, [soundEnabled, gameOver, currentPlayer])
+
+  useEffect(() => {
+    return () => {
+      sounds.stopGameMusicLoop()
+    }
+  }, [])
 
   // Initialize first player when data loads
   useEffect(() => {
@@ -108,9 +124,12 @@ export default function JourneyPage() {
     if (correct) {
       setScore(prev => prev + 100)
       setCorrectCount(prev => prev + 1)
-      if (soundEnabled) sounds.correct()
+      const nextStreak = correctStreak + 1
+      setCorrectStreak(nextStreak)
+      if (soundEnabled) sounds.gameCorrect(nextStreak, round >= 5)
     } else {
-      if (soundEnabled) sounds.wrong()
+      setCorrectStreak(0)
+      if (soundEnabled) sounds.gameWrong()
     }
     // Set guess to correct answer after reveal so it shows in the result
     setGuess(currentPlayer.name)
@@ -121,6 +140,7 @@ export default function JourneyPage() {
     if (round >= 5) {
       setGameOver(true)
       saveScore()
+      sounds.stopGameMusicLoop()
       if (soundEnabled) sounds.victory()
       return
     }
@@ -134,7 +154,6 @@ export default function JourneyPage() {
       setVisibleTeams(1)
       setRound(round + 1)
       setRoundStartTime(Date.now()) // Reset timer for new round
-      if (soundEnabled) sounds.click()
       // Focus input for next round
       setTimeout(() => inputRef.current?.focus(), 100)
     }
@@ -152,9 +171,11 @@ export default function JourneyPage() {
       setScore(0)
       setGameOver(false)
       setCorrectCount(0)
+      setCorrectStreak(0)
       setGameStartTime(Date.now())
       setRoundStartTime(Date.now())
       setAnswerTimes([])
+      if (soundEnabled) sounds.startGame()
     }
   }
 

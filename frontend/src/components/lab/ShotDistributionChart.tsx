@@ -16,6 +16,7 @@ interface Player {
 
 interface ShotDistributionChartProps {
   selectedPlayer?: Player | null
+  refreshKey?: number
 }
 
 interface ZoneData {
@@ -35,7 +36,7 @@ const ZONE_COLORS: Record<string, string> = {
   'Above Break 3': '#8B5CF6',
 }
 
-export function ShotDistributionChart({ selectedPlayer }: ShotDistributionChartProps) {
+export function ShotDistributionChart({ selectedPlayer, refreshKey = 0 }: ShotDistributionChartProps) {
   const [zones, setZones] = useState<ZoneData[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [usingRealData, setUsingRealData] = useState(false)
@@ -51,7 +52,7 @@ export function ShotDistributionChart({ selectedPlayer }: ShotDistributionChartP
       setIsLoading(true)
       try {
         const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/+$/, '')
-        const res = await fetch(`${API_URL}/api/stats/shot-distribution/${selectedPlayer.id}`)
+        const res = await fetch(`${API_URL}/api/stats/shot-distribution/${selectedPlayer.id}?t=${Date.now()}`)
         if (res.ok) {
           const data = await res.json()
           if (aborted) return
@@ -82,7 +83,7 @@ export function ShotDistributionChart({ selectedPlayer }: ShotDistributionChartP
 
     fetchDistribution()
     return () => { aborted = true }
-  }, [selectedPlayer?.id])
+  }, [selectedPlayer?.id, refreshKey])
 
   if (!selectedPlayer) {
     return (

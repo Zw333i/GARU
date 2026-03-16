@@ -143,7 +143,7 @@ export function DailyChallenge() {
           .eq('id', user.id)
         
         setXpAwarded(true)
-        console.log(`✅ Awarded ${xpGain} XP for daily challenge`)
+        console.log(`[OK] Awarded ${xpGain} XP for daily challenge`)
       }
     } catch (err) {
       console.error('Failed to award XP:', err)

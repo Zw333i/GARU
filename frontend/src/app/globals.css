@@ -4,26 +4,15 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Dark mode (default) */
+/* Base palette */
 :root {
-  --deep-void: #0F172A;
-  --gunmetal: #1E293B;
+  --deep-void: #1F2126;
+  --gunmetal: #2A2D33;
   --electric-lime: #84CC16;
   --hot-pink: #EC4899;
-  --ghost-white: #F8FAFC;
-  --surface: #334155;
-  --muted: #94A3B8;
-}
-
-/* Light mode */
-html.light-mode {
-  --deep-void: #F8FAFC;
-  --gunmetal: #E2E8F0;
-  --electric-lime: #65A30D;
-  --hot-pink: #DB2777;
-  --ghost-white: #0F172A;
-  --surface: #CBD5E1;
-  --muted: #64748B;
+  --ghost-white: #ECEFF3;
+  --surface: #3A3E46;
+  --muted: #AEB4BE;
 }
 
 * {
@@ -37,6 +26,9 @@ body {
   max-width: 100vw;
   overflow-x: hidden;
   background-color: var(--deep-void);
+  background-image:
+    radial-gradient(circle at 50% -20%, color-mix(in srgb, var(--surface) 24%, transparent) 0%, transparent 60%),
+    linear-gradient(180deg, color-mix(in srgb, var(--gunmetal) 38%, transparent) 0%, transparent 22%);
   color: var(--ghost-white);
 }
 
@@ -83,8 +75,13 @@ body {
   }
   
   .glass {
-    background-color: color-mix(in srgb, var(--gunmetal) 80%, transparent);
-    border: 1px solid color-mix(in srgb, var(--surface) 50%, transparent);
+    background: linear-gradient(
+      90deg,
+      color-mix(in srgb, var(--gunmetal) 84%, transparent) 0%,
+      color-mix(in srgb, var(--surface) 64%, transparent) 52%,
+      color-mix(in srgb, var(--gunmetal) 84%, transparent) 100%
+    );
+    border: 1px solid color-mix(in srgb, var(--surface) 56%, transparent);
     @apply backdrop-blur-lg;
   }
 }

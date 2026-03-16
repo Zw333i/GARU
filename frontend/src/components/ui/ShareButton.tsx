@@ -13,7 +13,7 @@ interface ShareButtonProps {
 
 export function ShareButton({
   title = 'GARU - NBA Knowledge Arena',
-  text = 'Check out my result on GARU! 🏀',
+  text = 'Check out my result on GARU!',
   url,
   className = '',
 }: ShareButtonProps) {
