@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, type ComponentType } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useAchievementStore, Achievement, ACHIEVEMENTS } from '@/store/achievementStore'
+import { useAchievementStore, Achievement } from '@/store/achievementStore'
 import {
   TrophyIcon,
   CheckIcon,
@@ -22,7 +22,7 @@ import {
 } from '@/components/icons'
 
 function AchievementIcon({ icon, className = '', size = 28 }: { icon: string; className?: string; size?: number }) {
-  type IconComponent = (props: { className?: string; size?: number }) => JSX.Element
+  type IconComponent = ComponentType<{ className?: string; size?: number }>
   const map: Record<string, IconComponent> = {
     trophy: TrophyIcon,
     fire: FireIcon,
@@ -180,8 +180,7 @@ export function AchievementCard({
 
 // Full achievements grid/page component
 export function AchievementsGrid() {
-  const { getAllAchievements, hasAchievement, getProgress } =
-    useAchievementStore()
+  const { getAllAchievements } = useAchievementStore()
 
   const achievements = getAllAchievements()
   const unlockedCount = achievements.filter((a) => a.unlockedAt).length
