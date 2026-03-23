@@ -75,7 +75,7 @@ const gameModeDefinitions = [
   {
     id: 'blind-comparison',
     title: 'Blind Comparison',
-    description: 'Two stat lines, no names. Pick who you would draft. Get surprised!',
+    description: 'Two stat lines, no names. Pick your choice, then reveal the players.',
     Icon: CompareIcon,
     difficulty: 'Hard',
     color: 'pink' as const,

@@ -13,7 +13,6 @@ import {
   ChartIcon,
   TrophyIcon,
   FireIcon,
-  CrownIcon,
   TargetIcon,
   StarIcon,
   BabyIcon,
@@ -27,7 +26,6 @@ import {
 const achievementIcons: Record<string, React.FC<{ size?: number; className?: string }>> = {
   first_steps: BabyIcon,
   streak_master: FireIcon,
-  draft_king: CrownIcon,
   role_player_expert: TargetIcon,
   stat_nerd: ChartIcon,
   perfect_week: StarIcon,
@@ -486,7 +484,6 @@ export default function ProfilePage() {
                   'the-journey': 'The Journey',
                   'blind-comparison': 'Blind Comparison',
                   'stat-attack': 'Stat Attack',
-                  'draft-arena': 'Draft Arena',
                   'multiplayer-whos-that': "MP - Who's That?",
                   'multiplayer-the-journey': 'MP - The Journey',
                 }

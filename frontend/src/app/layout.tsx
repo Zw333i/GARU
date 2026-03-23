@@ -7,8 +7,8 @@ import { AchievementToast } from '@/components/achievements/AchievementSystem'
 
 export const metadata: Metadata = {
   title: 'GARU',
-  description: 'Test your NBA knowledge, analyze player stats, and battle in draft challenges. The ultimate platform for basketball enthusiasts.',
-  keywords: ['NBA', 'basketball', 'stats', 'trivia', 'draft', 'fantasy'],
+  description: 'Test your NBA knowledge, analyze player stats, and compete in basketball challenges. The ultimate platform for basketball enthusiasts.',
+  keywords: ['NBA', 'basketball', 'stats', 'trivia', 'multiplayer', 'fantasy'],
   authors: [{ name: 'GARU Team' }],
   manifest: '/manifest.json',
   icons: {
@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: 'GARU - The NBA Knowledge Arena',
-    description: 'Test your NBA knowledge and battle in draft challenges',
+    description: 'Test your NBA knowledge and compete in basketball challenges',
     type: 'website',
   },
 }

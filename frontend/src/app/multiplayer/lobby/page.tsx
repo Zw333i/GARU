@@ -43,7 +43,6 @@ function LobbyContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const roomCode = searchParams.get('code')
-  const isHost = searchParams.get('host') === 'true'
 
   // Use centralized auth store
   const { user } = useAuthStore()
@@ -302,6 +301,7 @@ function LobbyContent() {
     )
   }
 
+  const isHost = !!user && user.id === room.host_id
   const canStart = (room.players?.length || 0) >= 2
   const maxPlayers = room.max_players || 5
   const emptySlots = Math.max(0, maxPlayers - (room.players?.length || 0))

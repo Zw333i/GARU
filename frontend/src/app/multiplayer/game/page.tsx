@@ -42,6 +42,7 @@ interface Room {
   players: PlayerData[]
   questions: Question[]
   current_question: number
+  updated_at?: string
 }
 
 function GameContent() {
@@ -72,6 +73,8 @@ function GameContent() {
 
   // Ref for auto-advance timer so Enter key can cancel it
   const autoAdvanceTimerRef = React.useRef<number | null>(null)
+  const currentQRef = React.useRef(0)
+  currentQRef.current = currentQ
 
   // Global keyboard handler for Enter key
   useEffect(() => {
@@ -80,6 +83,7 @@ function GameContent() {
 
       // If showing result, advance to next question immediately
       if (showResult && room) {
+        if (user?.id !== room.host_id) return
         e.preventDefault()
         // Cancel auto-advance timer
         if (autoAdvanceTimerRef.current) {
@@ -142,6 +146,20 @@ function GameContent() {
         (payload) => {
           const newRoom = payload.new as Room
           setRoom(newRoom)
+
+          if (
+            typeof newRoom.current_question === 'number' &&
+            newRoom.current_question !== currentQRef.current
+          ) {
+            setCurrentQ(newRoom.current_question)
+            setGuess('')
+            setAnswered(false)
+            answeredRef.current = false
+            setIsCorrect(null)
+            setShowResult(false)
+            setTimeLeft(newRoom.timer_duration)
+            setQuestionStartTime(Date.now())
+          }
           
           if (newRoom.status === 'finished') {
             router.push(`/multiplayer/results?code=${roomCode}`)
@@ -238,35 +256,66 @@ function GameContent() {
       correct ? sounds.correct() : sounds.wrong()
     }
 
-    // Update player score in database
-    const updatedPlayers = room.players.map(p => {
-      if (p.id === user.id) {
-        return {
-          ...p,
-          score: p.score + pointsEarned,
-          answers: [...p.answers, newAnswer],
-        }
-      }
-      return p
-    })
+    // Update score with optimistic concurrency to reduce overwrite races for 2-5 players.
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const { data: freshRoom, error: freshRoomError } = await supabase
+        .from('multiplayer_rooms')
+        .select('players, updated_at')
+        .eq('id', room.id)
+        .single()
 
-    await supabase
-      .from('multiplayer_rooms')
-      .update({ players: updatedPlayers })
-      .eq('id', room.id)
+      if (freshRoomError || !freshRoom) {
+        break
+      }
+
+      const players = (freshRoom.players || []) as PlayerData[]
+      const updatedPlayers = players.map(p => {
+        if (p.id === user.id) {
+          return {
+            ...p,
+            score: p.score + pointsEarned,
+            answers: [...(p.answers || []), newAnswer],
+          }
+        }
+        return p
+      })
+
+      const { data: writeResult, error: writeError } = await supabase
+        .from('multiplayer_rooms')
+        .update({ players: updatedPlayers })
+        .eq('id', room.id)
+        .eq('updated_at', freshRoom.updated_at)
+        .select('id, players, updated_at')
+        .maybeSingle()
+
+      if (writeError) {
+        break
+      }
+
+      if (writeResult) {
+        setRoom(prev => prev ? {
+          ...prev,
+          players: writeResult.players as PlayerData[],
+          updated_at: writeResult.updated_at as string,
+        } : prev)
+        break
+      }
+    }
 
     // Set up for manual advance via Enter key (auto-advance after 5s as fallback)
-    autoAdvanceTimerRef.current = window.setTimeout(() => {
-      if (currentQ < room.questions.length - 1) {
-        nextQuestion()
-      } else {
-        finishGame()
-      }
-    }, 5000)
+    if (user.id === room.host_id) {
+      autoAdvanceTimerRef.current = window.setTimeout(() => {
+        if (currentQ < room.questions.length - 1) {
+          nextQuestion()
+        } else {
+          finishGame()
+        }
+      }, 5000)
+    }
   }
 
   const nextQuestion = async () => {
-    if (!room) return
+    if (!room || user?.id !== room.host_id) return
 
     const nextQ = currentQ + 1
     setCurrentQ(nextQ)
@@ -277,13 +326,10 @@ function GameContent() {
     setTimeLeft(room.timer_duration)
     setQuestionStartTime(Date.now())
 
-    // Update current question in database (host only)
-    if (user?.id === room.host_id) {
-      await supabase
-        .from('multiplayer_rooms')
-        .update({ current_question: nextQ })
-        .eq('id', room.id)
-    }
+    await supabase
+      .from('multiplayer_rooms')
+      .update({ current_question: nextQ })
+      .eq('id', room.id)
   }
 
   const finishGame = async () => {
@@ -370,7 +416,7 @@ function GameContent() {
                 ))}
               </div>
               <p className="text-center text-muted text-sm mt-4">
-                Draft team → Current team
+                First team → Current team
               </p>
             </div>
           ) : (
@@ -463,7 +509,9 @@ function GameContent() {
                   +{100 + Math.floor((timeLeft / room.timer_duration) * 50)} points!
                 </p>
               )}
-              <p className="text-xs text-muted mt-3 animate-pulse">Press Enter to continue</p>
+              <p className="text-xs text-muted mt-3 animate-pulse">
+                {user?.id === room.host_id ? 'Press Enter to continue' : 'Waiting for host...'}
+              </p>
             </motion.div>
           )}
         </AnimatePresence>

@@ -13,8 +13,9 @@ import os
 import sys
 import json
 import time
+import random
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Callable, TypeVar
 from pathlib import Path
 
 # Add parent directory to path for imports
@@ -32,6 +33,12 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY") or os.getenv("SUPABASE_KEY")
 
 CURRENT_SEASON = "2025-26"
+NBA_API_TIMEOUT = int(os.getenv("NBA_API_TIMEOUT", "90"))
+NBA_API_MAX_RETRIES = int(os.getenv("NBA_API_MAX_RETRIES", "4"))
+NBA_API_RETRY_BASE_DELAY = float(os.getenv("NBA_API_RETRY_BASE_DELAY", "2"))
+FAIL_ON_FETCH_ERROR = os.getenv("FAIL_ON_FETCH_ERROR", "false").lower() == "true"
+
+T = TypeVar("T")
 
 # Team ID to abbreviation map
 TEAM_ABBR_MAP = {
@@ -149,6 +156,29 @@ def infer_position_from_stats(stats: dict) -> str:
     return "SF"
 
 
+def with_retries(label: str, operation: Callable[[], T]) -> T:
+    """Run NBA API operations with exponential backoff for transient timeouts."""
+    last_error = None
+
+    for attempt in range(1, NBA_API_MAX_RETRIES + 1):
+        try:
+            return operation()
+        except Exception as err:
+            last_error = err
+            if attempt >= NBA_API_MAX_RETRIES:
+                break
+
+            sleep_s = min(30.0, NBA_API_RETRY_BASE_DELAY * (2 ** (attempt - 1)))
+            sleep_s += random.uniform(0, 0.5)
+            print(
+                f"⚠️ {label} failed (attempt {attempt}/{NBA_API_MAX_RETRIES}): {err}. "
+                f"Retrying in {sleep_s:.1f}s..."
+            )
+            time.sleep(sleep_s)
+
+    raise RuntimeError(f"{label} failed after {NBA_API_MAX_RETRIES} attempts") from last_error
+
+
 def fetch_player_positions() -> Dict[int, str]:
     """
     Fetch real position data from PlayerIndex endpoint.
@@ -159,7 +189,10 @@ def fetch_player_positions() -> Dict[int, str]:
     time.sleep(0.6)  # Rate limiting
     
     try:
-        player_index = PlayerIndex(season=CURRENT_SEASON)
+        player_index = with_retries(
+            "PlayerIndex",
+            lambda: PlayerIndex(season=CURRENT_SEASON, timeout=NBA_API_TIMEOUT),
+        )
         df = player_index.get_data_frames()[0]
         
         positions = {}
@@ -190,10 +223,14 @@ def fetch_all_players() -> List[Dict]:
     time.sleep(0.6)
     
     # Fetch all player stats for current season
-    league_stats = LeagueDashPlayerStats(
-        season=CURRENT_SEASON,
-        per_mode_detailed="PerGame",
-        season_type_all_star="Regular Season"
+    league_stats = with_retries(
+        "LeagueDashPlayerStats",
+        lambda: LeagueDashPlayerStats(
+            season=CURRENT_SEASON,
+            per_mode_detailed="PerGame",
+            season_type_all_star="Regular Season",
+            timeout=NBA_API_TIMEOUT,
+        ),
     )
     
     df = league_stats.get_data_frames()[0]
@@ -310,7 +347,19 @@ def main():
     print("=" * 50)
     
     # Step 1: Fetch all players from NBA API
-    players = fetch_all_players()
+    try:
+        players = fetch_all_players()
+    except Exception as fetch_error:
+        print(f"❌ Failed to fetch NBA data: {fetch_error}")
+        if FAIL_ON_FETCH_ERROR:
+            raise
+
+        print("⚠️ Skipping sync this run due to temporary NBA API issue.")
+        print("   Set FAIL_ON_FETCH_ERROR=true to force workflow failure on fetch errors.")
+        print("\n" + "=" * 50)
+        print("✅ Sync skipped gracefully")
+        print("=" * 50)
+        return
     
     if not players:
         print("❌ No players fetched. Aborting.")

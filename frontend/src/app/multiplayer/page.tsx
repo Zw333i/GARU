@@ -38,6 +38,8 @@ const GAMES = [
 
 const QUESTION_OPTIONS = [5, 10, 15, 20]
 const TIMER_OPTIONS = [10, 15, 20, 30] // seconds per question
+const MIN_PLAYERS = 2
+const MAX_PLAYERS = 5
 
 // Generate room code
 function generateRoomCode(): string {
@@ -175,6 +177,7 @@ function MultiplayerContent() {
           question_count: questionCount,
           timer_duration: timerDuration,
           status: 'waiting',
+          max_players: MAX_PLAYERS,
           players: [{ 
             id: user.id, 
             score: 0, 
@@ -232,67 +235,77 @@ function MultiplayerContent() {
       // Ensure user exists in public.users
       await ensureUserExists(user.id)
 
-      // Find the room
-      const { data: room, error: findError } = await supabase
-        .from('multiplayer_rooms')
-        .select('*')
-        .eq('code', joinCode.toUpperCase())
-        .eq('status', 'waiting')
-        .single()
+      let joined = false
 
-      if (findError || !room) {
-        setError('Room not found or game already started')
-        setLoading(false)
-        return
-      }
+      // Retry to avoid lost updates when multiple players join at once.
+      for (let attempt = 0; attempt < 4; attempt++) {
+        const { data: room, error: findError } = await supabase
+          .from('multiplayer_rooms')
+          .select('*')
+          .eq('code', joinCode.toUpperCase())
+          .eq('status', 'waiting')
+          .single()
 
-      if (room.host_id === user.id) {
-        setError('You cannot join your own room')
-        setLoading(false)
-        return
-      }
-
-      const currentPlayers = room.players || []
-      const maxPlayers = room.max_players || 5
-
-      // Check if already in the room
-      if (currentPlayers.some((p: any) => p.id === user.id)) {
-        // Already joined — just go to lobby
-        router.push(`/multiplayer/lobby?code=${joinCode.toUpperCase()}`)
-        return
-      }
-
-      if (currentPlayers.length >= maxPlayers) {
-        setError(`Room is full (${maxPlayers} players max)`)
-        setLoading(false)
-        return
-      }
-
-      // Add player to room
-      const updatedPlayers = [
-        ...currentPlayers, 
-        { 
-          id: user.id, 
-          score: 0, 
-          answers: [],
-          username: user.user_metadata?.name || 'Guest',
+        if (findError || !room) {
+          setError('Room not found or game already started')
+          return
         }
-      ]
-      
-      // Set guest_id for first joiner (backward compat), otherwise just update players
-      const updatePayload: any = { players: updatedPlayers }
-      if (!room.guest_id) {
-        updatePayload.guest_id = user.id
+
+        if (room.host_id === user.id) {
+          setError('You cannot join your own room')
+          return
+        }
+
+        const currentPlayers = room.players || []
+        const maxPlayers = Math.min(MAX_PLAYERS, Math.max(MIN_PLAYERS, room.max_players || MAX_PLAYERS))
+
+        if (currentPlayers.some((p: any) => p.id === user.id)) {
+          joined = true
+          break
+        }
+
+        if (currentPlayers.length >= maxPlayers) {
+          setError(`Room is full (${maxPlayers} players max)`)
+          return
+        }
+
+        const updatedPlayers = [
+          ...currentPlayers,
+          {
+            id: user.id,
+            score: 0,
+            answers: [],
+            username: user.user_metadata?.name || 'Guest',
+          }
+        ]
+
+        const updatePayload: any = { players: updatedPlayers }
+        if (!room.guest_id) {
+          updatePayload.guest_id = user.id
+        }
+
+        const { data: updatedRoom, error: joinError } = await supabase
+          .from('multiplayer_rooms')
+          .update(updatePayload)
+          .eq('id', room.id)
+          .eq('updated_at', room.updated_at)
+          .select('id')
+          .maybeSingle()
+
+        if (joinError) {
+          console.error('Failed to join room:', joinError)
+          setError(joinError.message || 'Failed to join room')
+          return
+        }
+
+        if (updatedRoom) {
+          joined = true
+          break
+        }
       }
 
-      const { error: joinError } = await supabase
-        .from('multiplayer_rooms')
-        .update(updatePayload)
-        .eq('id', room.id)
-
-      if (joinError) {
-        console.error('Failed to join room:', joinError)
-        setError(joinError.message || 'Failed to join room')
+      if (!joined) {
+        setError('Room changed while joining, please try again')
         return
       }
 

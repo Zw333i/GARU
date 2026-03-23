@@ -48,25 +48,29 @@ app = FastAPI(
 )
 
 # CORS configuration
-# Allow frontend URL from environment variable or default to localhost
+# Supports a single FRONTEND_URL and/or comma-separated FRONTEND_URLS.
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+FRONTEND_URLS = os.getenv("FRONTEND_URLS", "")
 
-origins = [
+origins = {
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-]
+}
 
-# Add production frontend URL if specified
-if FRONTEND_URL and FRONTEND_URL not in origins:
-    origins.append(FRONTEND_URL)
+if FRONTEND_URL:
+    origins.add(FRONTEND_URL.strip())
 
-# Also allow any vercel app preview deployments
-if os.getenv("ENVIRONMENT") == "production":
-    origins.append("https://*.vercel.app")
+if FRONTEND_URLS:
+    for url in FRONTEND_URLS.split(","):
+        cleaned = url.strip()
+        if cleaned:
+            origins.add(cleaned)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins if os.getenv("ENVIRONMENT") != "production" else [FRONTEND_URL, "http://localhost:3000"],
+    allow_origins=sorted(origins),
+    # Needed for Vercel preview deploys (e.g. https://my-branch-foo.vercel.app)
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

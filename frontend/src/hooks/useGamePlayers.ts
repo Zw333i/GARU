@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { getRandomPlayers, getRolePlayers, getStarPlayers, getDraftPlayerPools, Player } from '@/lib/supabase'
+import { getRandomPlayers, getRolePlayers, getStarPlayers, Player } from '@/lib/supabase'
 
 // Simplified player interface for games
 export interface GamePlayer {
@@ -122,40 +122,6 @@ export function useStarPlayers(minPPG: number = 18) {
   }, [minPPG])
 
   return { players, loading, error }
-}
-
-// Hook to fetch draft pools by position
-export function useDraftPools() {
-  const [pools, setPools] = useState<Record<string, GamePlayer[]>>({})
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    async function fetchPools() {
-      try {
-        setLoading(true)
-        const data = await getDraftPlayerPools()
-        
-        // Convert each position's players
-        const converted: Record<string, GamePlayer[]> = {}
-        for (const [pos, players] of Object.entries(data)) {
-          converted[pos] = players.map(toGamePlayer)
-        }
-        
-        setPools(converted)
-        setError(null)
-      } catch (err) {
-        console.error('Error fetching draft pools:', err)
-        setError('Failed to load players')
-      } finally {
-        setLoading(false)
-      }
-    }
-    
-    fetchPools()
-  }, [])
-
-  return { pools, loading, error }
 }
 
 // Fallback players if Supabase fails - 2025-26 Season + 2010s Legends

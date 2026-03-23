@@ -26,6 +26,10 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          NBA_API_TIMEOUT: "120"
+          NBA_API_MAX_RETRIES: "5"
+          NBA_API_RETRY_BASE_DELAY: "2"
+          FAIL_ON_FETCH_ERROR: "false"
         run: |
           cd backend
           python scripts/sync_to_supabase.py
@@ -34,5 +38,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nba-data
-          path: backend/players_data.json
+          path: backend/players_backup.json
           if-no-files-found: ignore

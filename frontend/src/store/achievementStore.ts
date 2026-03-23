@@ -17,7 +17,7 @@ export const ACHIEVEMENTS: Record<string, Omit<Achievement, 'unlockedAt' | 'prog
   FIRST_WIN: {
     id: 'FIRST_WIN',
     name: 'First Victory',
-    description: 'Win your first draft battle',
+    description: 'Win your first game',
     icon: 'trophy',
     xp: 50,
   },
@@ -45,7 +45,7 @@ export const ACHIEVEMENTS: Record<string, Omit<Achievement, 'unlockedAt' | 'prog
   PERFECT_DRAFT: {
     id: 'PERFECT_DRAFT',
     name: 'Dream Team',
-    description: 'Draft a team with 90+ rating',
+    description: 'Score 90+ points in a single game',
     icon: 'star',
     xp: 200,
   },

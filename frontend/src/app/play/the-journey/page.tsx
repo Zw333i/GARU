@@ -239,7 +239,7 @@ export default function JourneyPage() {
           Guess which player took this career path
         </p>
         <p className="text-center text-xs text-muted/70 mb-8">
-          Draft team → Current team 
+          First team → Current team
         </p>
 
         {!gameOver ? (
@@ -283,7 +283,7 @@ export default function JourneyPage() {
                     'bg-surface text-muted'
                   }`}
                 >
-                  {team} {i === 0 && '(Draft)'}
+                    {team} {i === 0 && '(First Team)'}
                 </motion.span>
               ))}
             </div>

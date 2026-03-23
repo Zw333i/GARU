@@ -58,35 +58,6 @@ export interface Battle {
   created_at: string
 }
 
-export interface DraftTeam {
-  team_id: string
-  user_id: string
-  pg_id: number
-  sg_id: number
-  sf_id: number
-  pf_id: number
-  c_id: number
-  team_score: number
-  created_at: string
-}
-
-// Draft Room for multiplayer
-export interface DraftRoom {
-  id: string
-  code: string  // 6-character join code
-  host_id: string
-  guest_id: string | null
-  status: 'waiting' | 'drafting' | 'completed'
-  current_position: 'PG' | 'SG' | 'SF' | 'PF' | 'C'
-  player_pool: any  // Shared players for both users
-  host_picks: Record<string, number>  // position -> player_id
-  guest_picks: Record<string, number>
-  host_ready: boolean
-  guest_ready: boolean
-  winner_id: string | null
-  created_at: string
-}
-
 // In-memory cache for players - persists for the entire session
 let playersCache: Player[] | null = null
 
@@ -195,7 +166,7 @@ export async function getRolePlayers(minPPG: number = 8, maxPPG: number = 18, mi
   return [...players].sort(() => Math.random() - 0.5)
 }
 
-// Get players by position for draft - uses cache
+// Get players by position - uses cache
 export async function getPlayersByPosition(position: string, count: number = 5) {
   const allPlayers = await getCachedPlayers()
   
@@ -205,36 +176,6 @@ export async function getPlayersByPosition(position: string, count: number = 5) 
   return players
     .sort((a, b) => (b.season_stats?.rating || 0) - (a.season_stats?.rating || 0))
     .slice(0, count)
-}
-
-// Get all players for draft pools (grouped by position) - uses cache
-export async function getDraftPlayerPools() {
-  const allPlayers = await getCachedPlayers()
-  
-  // Group by position and sort each group by rating
-  const pools: Record<string, Player[]> = {
-    PG: [],
-    SG: [],
-    SF: [],
-    PF: [],
-    C: []
-  }
-  
-  for (const player of allPlayers) {
-    const pos = player.position
-    if (pos in pools) {
-      pools[pos].push(player)
-    }
-  }
-  
-  // Sort each position by rating and take top 10
-  for (const pos of Object.keys(pools)) {
-    pools[pos] = pools[pos]
-      .sort((a, b) => (b.season_stats?.rating || 0) - (a.season_stats?.rating || 0))
-      .slice(0, 10)
-  }
-  
-  return pools
 }
 
 export async function getCurrentUser() {
@@ -291,227 +232,12 @@ export async function signOut() {
   if (error) throw error
 }
 
-// ========== DRAFT ROOM FUNCTIONS ==========
-
-// Generate a random 6-character room code
-function generateRoomCode(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'  // Exclude confusing chars like O, 0, I, 1
-  let code = ''
-  for (let i = 0; i < 6; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length))
-  }
-  return code
-}
-
-// Create a new draft room (host)
-export async function createDraftRoom(hostId: string, playerPool: any): Promise<DraftRoom> {
-  const code = generateRoomCode()
-  
-  const { data, error } = await supabase
-    .from('draft_rooms')
-    .insert({
-      code,
-      host_id: hostId,
-      status: 'waiting',
-      current_position: 'PG',
-      player_pool: playerPool,
-      host_picks: {},
-      guest_picks: {},
-      host_ready: false,
-      guest_ready: false,
-    })
-    .select()
-    .single()
-  
-  if (error) throw error
-  return data as DraftRoom
-}
-
-// Join a draft room by code (guest)
-export async function joinDraftRoom(code: string, guestId: string): Promise<DraftRoom> {
-  // First find the room
-  const { data: room, error: findError } = await supabase
-    .from('draft_rooms')
-    .select('*')
-    .eq('code', code.toUpperCase())
-    .eq('status', 'waiting')
-    .single()
-  
-  if (findError || !room) {
-    throw new Error('Room not found or already started')
-  }
-  
-  if (room.host_id === guestId) {
-    throw new Error('Cannot join your own room')
-  }
-  
-  // Update room with guest
-  const { data, error } = await supabase
-    .from('draft_rooms')
-    .update({
-      guest_id: guestId,
-      status: 'drafting',
-    })
-    .eq('id', room.id)
-    .select()
-    .single()
-  
-  if (error) throw error
-  return data as DraftRoom
-}
-
-// Get draft room by ID
-export async function getDraftRoom(roomId: string): Promise<DraftRoom | null> {
-  const { data, error } = await supabase
-    .from('draft_rooms')
-    .select('*')
-    .eq('id', roomId)
-    .single()
-  
-  if (error) return null
-  return data as DraftRoom
-}
-
-// Get draft room by code
-export async function getDraftRoomByCode(code: string): Promise<DraftRoom | null> {
-  const { data, error } = await supabase
-    .from('draft_rooms')
-    .select('*')
-    .eq('code', code.toUpperCase())
-    .single()
-  
-  if (error) return null
-  return data as DraftRoom
-}
-
-// Make a draft pick
-export async function makeDraftPick(
-  roomId: string,
-  userId: string,
-  position: string,
-  playerId: number
-): Promise<void> {
-  // Get current room
-  const room = await getDraftRoom(roomId)
-  if (!room) throw new Error('Room not found')
-  
-  const isHost = room.host_id === userId
-  const picksField = isHost ? 'host_picks' : 'guest_picks'
-  const readyField = isHost ? 'host_ready' : 'guest_ready'
-  
-  const currentPicks = isHost ? room.host_picks : room.guest_picks
-  const newPicks = { ...currentPicks, [position]: playerId }
-  
-  // Check if all positions are filled
-  const positions = ['PG', 'SG', 'SF', 'PF', 'C']
-  const allPicked = positions.every(pos => pos in newPicks)
-  
-  const { error } = await supabase
-    .from('draft_rooms')
-    .update({
-      [picksField]: newPicks,
-      [readyField]: allPicked,
-    })
-    .eq('id', roomId)
-  
-  if (error) throw error
-}
-
-// Mark player as ready / advance position
-export async function advanceDraftPosition(roomId: string): Promise<void> {
-  const room = await getDraftRoom(roomId)
-  if (!room) throw new Error('Room not found')
-  
-  const positions: Array<'PG' | 'SG' | 'SF' | 'PF' | 'C'> = ['PG', 'SG', 'SF', 'PF', 'C']
-  const currentIndex = positions.indexOf(room.current_position)
-  
-  if (currentIndex < positions.length - 1) {
-    const { error } = await supabase
-      .from('draft_rooms')
-      .update({
-        current_position: positions[currentIndex + 1],
-      })
-      .eq('id', roomId)
-    
-    if (error) throw error
-  }
-}
-
-// Complete draft and calculate winner
-export async function completeDraft(roomId: string, playerPool: any): Promise<{ winnerId: string | null; hostScore: number; guestScore: number }> {
-  const room = await getDraftRoom(roomId)
-  if (!room) throw new Error('Room not found')
-  
-  // Calculate scores
-  const calculateScore = (picks: Record<string, number>) => {
-    let score = 0
-    Object.entries(picks).forEach(([position, playerId]) => {
-      const allPlayers = Object.values(playerPool).flat() as any[]
-      const player = allPlayers.find((p) => p.id === playerId)
-      if (player) {
-        score += (player.rating || 0) + (player.pts || 0) + (player.reb || 0) + (player.ast || 0)
-      }
-    })
-    return score
-  }
-  
-  const hostScore = calculateScore(room.host_picks)
-  const guestScore = calculateScore(room.guest_picks)
-  const winnerId = hostScore > guestScore ? room.host_id : 
-                   guestScore > hostScore ? room.guest_id : null
-  
-  const { error } = await supabase
-    .from('draft_rooms')
-    .update({
-      status: 'completed',
-      winner_id: winnerId,
-    })
-    .eq('id', roomId)
-  
-  if (error) throw error
-  
-  return { winnerId, hostScore, guestScore }
-}
-
-// Subscribe to draft room changes (real-time)
-export function subscribeToDraftRoom(
-  roomId: string,
-  callback: (room: DraftRoom) => void
-) {
-  return supabase
-    .channel(`draft_room:${roomId}`)
-    .on(
-      'postgres_changes',
-      {
-        event: '*',
-        schema: 'public',
-        table: 'draft_rooms',
-        filter: `id=eq.${roomId}`,
-      },
-      (payload) => {
-        callback(payload.new as DraftRoom)
-      }
-    )
-    .subscribe()
-}
-
-// Clean up old draft rooms (older than 1 hour)
-export async function cleanupOldRooms(): Promise<void> {
-  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString()
-  
-  await supabase
-    .from('draft_rooms')
-    .delete()
-    .lt('created_at', oneHourAgo)
-    .neq('status', 'drafting')
-}
-
 // ========== GAME SCORE FUNCTIONS ==========
 
 export interface GameScore {
   id?: string
   user_id: string
-  game_type: 'whos-that' | 'blind-comparison' | 'the-journey' | 'draft-arena' | 'stat-attack' | 'multiplayer-whos-that' | 'multiplayer-the-journey'
+  game_type: 'whos-that' | 'blind-comparison' | 'the-journey' | 'stat-attack' | 'multiplayer-whos-that' | 'multiplayer-the-journey'
   score: number
   questions_answered?: number
   correct_answers?: number
@@ -549,13 +275,6 @@ export async function saveGameScore(score: Omit<GameScore, 'id' | 'created_at'>)
     
     if (user?.current_streak) {
       await checkStreakAchievement(score.user_id, user.current_streak)
-    }
-    
-    // Track game-specific achievements
-    if (score.game_type === 'draft-arena') {
-      if ((score.correct_answers || 0) >= (score.questions_answered || 0) / 2) {
-        await updateAchievementProgress(score.user_id, 'draft_king', 1)
-      }
     }
     
     // Track role player guesses for guess-based games
@@ -655,7 +374,7 @@ export interface Achievement {
   id: string
   name: string
   description: string
-  type: 'first_steps' | 'streak_master' | 'draft_king' | 'role_player_expert' | 'stat_nerd' | 'perfect_week'
+  type: 'first_steps' | 'streak_master' | 'role_player_expert' | 'stat_nerd' | 'perfect_week'
   threshold: number  // Number required to unlock
 }
 
@@ -672,7 +391,6 @@ export interface UserAchievement {
 export const ACHIEVEMENTS: Achievement[] = [
   { id: 'first_steps', name: 'First Steps', description: 'Complete your first game', type: 'first_steps', threshold: 1 },
   { id: 'streak_master', name: 'Streak Master', description: 'Get a 5-day streak', type: 'streak_master', threshold: 5 },
-  { id: 'draft_king', name: 'Draft King', description: 'Win 10 draft battles', type: 'draft_king', threshold: 10 },
   { id: 'role_player_expert', name: 'Role Player Expert', description: 'Correctly guess 50 role players', type: 'role_player_expert', threshold: 50 },
   { id: 'stat_nerd', name: 'Stat Nerd', description: 'View 100 shot charts', type: 'stat_nerd', threshold: 100 },
   { id: 'perfect_week', name: 'Perfect Week', description: 'Complete all daily challenges for a week', type: 'perfect_week', threshold: 7 },
@@ -793,7 +511,3 @@ export async function incrementRolePlayerGuesses(userId: string, count: number =
   return await updateAchievementProgress(userId, 'role_player_expert', count)
 }
 
-// Increment draft battle wins (for Draft King achievement)
-export async function incrementDraftBattleWins(userId: string): Promise<boolean> {
-  return await updateAchievementProgress(userId, 'draft_king', 1)
-}
