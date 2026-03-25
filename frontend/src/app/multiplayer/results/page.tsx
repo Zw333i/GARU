@@ -9,6 +9,8 @@ import { useAuthStore } from '@/store/authStore'
 import { useSessionDataStore } from '@/store/sessionDataStore'
 import { TeamLogo } from '@/components/icons/TeamLogos'
 import confetti from 'canvas-confetti'
+import { sounds } from '@/lib/sounds'
+import { useSettingsStore } from '@/store/settingsStore'
 import { 
   TrophyIcon, 
   CrownIcon, 
@@ -70,6 +72,7 @@ function ResultsContent() {
 
   // Use centralized auth store
   const { user } = useAuthStore()
+  const { soundEnabled } = useSettingsStore()
   
   const [room, setRoom] = useState<Room | null>(null)
   const [profiles, setProfiles] = useState<Record<string, UserProfile>>({})
@@ -138,6 +141,9 @@ function ResultsContent() {
             origin: { y: 0.6 }
           })
         }, 500)
+        if (soundEnabled) {
+          sounds.victory()
+        }
       }
 
       // Save multiplayer result to game_scores (once per game)
@@ -175,7 +181,7 @@ function ResultsContent() {
         }
       }
     }
-  }, [roomCode, router, statsSaved])
+  }, [roomCode, router, statsSaved, soundEnabled])
 
   useEffect(() => {
     // No need for local auth - using centralized auth store

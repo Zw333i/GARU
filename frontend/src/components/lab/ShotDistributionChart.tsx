@@ -40,6 +40,8 @@ export function ShotDistributionChart({ selectedPlayer, refreshKey = 0 }: ShotDi
   const [zones, setZones] = useState<ZoneData[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [usingRealData, setUsingRealData] = useState(false)
+  const [seasonUsed, setSeasonUsed] = useState<string | null>(null)
+  const [usedFallbackSeason, setUsedFallbackSeason] = useState(false)
 
   useEffect(() => {
     if (!selectedPlayer) {
@@ -53,17 +55,33 @@ export function ShotDistributionChart({ selectedPlayer, refreshKey = 0 }: ShotDi
       try {
         const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/+$/, '')
         const forceRefresh = refreshKey > 0
-        const url = forceRefresh
-          ? `${API_URL}/api/stats/shot-distribution/${selectedPlayer.id}?t=${Date.now()}`
-          : `${API_URL}/api/stats/shot-distribution/${selectedPlayer.id}`
+        const buildUrl = (refresh: boolean) => {
+          const params = new URLSearchParams()
+          if (refresh) params.set('refresh', 'true')
+          if (refresh) params.set('t', String(Date.now()))
+          const query = params.toString()
+          return `${API_URL}/api/stats/shot-distribution/${selectedPlayer.id}${query ? `?${query}` : ''}`
+        }
 
-        const res = await fetch(url, {
+        let res = await fetch(buildUrl(forceRefresh), {
           cache: forceRefresh ? 'no-store' : 'force-cache',
         })
+
+        // If no data was returned from cache path, force one live refresh before showing empty state.
+        if (res.ok) {
+          const firstData = await res.clone().json()
+          const firstHasData = Array.isArray(firstData?.zones) && firstData.zones.some((z: ZoneData) => z.attempts > 0)
+          if (!firstHasData && !forceRefresh) {
+            res = await fetch(buildUrl(true), { cache: 'no-store' })
+          }
+        }
+
         if (res.ok) {
           const data = await res.json()
           if (aborted) return
           setUsingRealData(data.using_real_data)
+          setSeasonUsed(data.season_used || null)
+          setUsedFallbackSeason(!!data.season_fallback_used)
           const hasData = data.zones.some((z: ZoneData) => z.attempts > 0)
           if (hasData) {
             const zonesWithColors = data.zones.map((z: Omit<ZoneData, 'color'>) => ({
@@ -76,13 +94,21 @@ export function ShotDistributionChart({ selectedPlayer, refreshKey = 0 }: ShotDi
             setUsingRealData(false)
           }
         } else {
-          if (!aborted) setZones([])
+          if (!aborted) {
+            setZones([])
+            setSeasonUsed(null)
+            setUsedFallbackSeason(false)
+          }
         }
       } catch (err: unknown) {
         if (err instanceof Error && err.name === 'AbortError') return
         // Suppress network errors when backend is offline — show empty state silently
         if (!(err instanceof TypeError)) console.error('Failed to fetch shot distribution:', err)
-        if (!aborted) setZones([])
+        if (!aborted) {
+          setZones([])
+          setSeasonUsed(null)
+          setUsedFallbackSeason(false)
+        }
       } finally {
         if (!aborted) setIsLoading(false)
       }
@@ -155,8 +181,12 @@ export function ShotDistributionChart({ selectedPlayer, refreshKey = 0 }: ShotDi
       {zones.length === 0 && (
         <div className="h-40 flex items-center justify-center text-muted text-sm flex-col gap-2">
           <p>No shot distribution data available for {selectedPlayer.name}</p>
-          <p className="text-xs text-muted/60">Run the sync script to populate the database</p>
+          <p className="text-xs text-muted/60">This player may not have recent shot attempts available yet.</p>
         </div>
+      )}
+
+      {usedFallbackSeason && seasonUsed && zones.length > 0 && (
+        <p className="text-xs text-muted mb-3">Showing latest available season: {seasonUsed}</p>
       )}
 
       <div className="space-y-4">

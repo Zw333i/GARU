@@ -68,8 +68,10 @@ function GameContent() {
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null)
   const [timeLeft, setTimeLeft] = useState(0)
   const [score, setScore] = useState(0)
+  const [correctStreak, setCorrectStreak] = useState(0)
   const [answers, setAnswers] = useState<PlayerData['answers']>([])
   const [showResult, setShowResult] = useState(false)
+  const [timedOut, setTimedOut] = useState(false)
   const [questionStartTime, setQuestionStartTime] = useState<number>(0)
   const [connected, setConnected] = useState(false)
 
@@ -81,6 +83,7 @@ function GameContent() {
   const autoAdvanceTimerRef = React.useRef<number | null>(null)
   const currentQRef = React.useRef(0)
   currentQRef.current = currentQ
+  const warningPlayedRef = React.useRef(false)
 
   // Global keyboard handler for Enter key
   useEffect(() => {
@@ -145,6 +148,14 @@ function GameContent() {
     fetchRoom()
   }, [fetchRoom])
 
+  useEffect(() => {
+    if (!soundEnabled || !room || room.status !== 'playing') return
+    sounds.startGameMusicLoop()
+    return () => {
+      sounds.stopGameMusicLoop()
+    }
+  }, [soundEnabled, room?.id, room?.status])
+
   // Real-time subscription for game updates
   useEffect(() => {
     if (!roomCode) return
@@ -172,9 +183,11 @@ function GameContent() {
             setAnswered(false)
             answeredRef.current = false
             setIsCorrect(null)
+            setTimedOut(false)
             setShowResult(false)
             setTimeLeft(newRoom.timer_duration)
             setQuestionStartTime(Date.now())
+            warningPlayedRef.current = false
           }
           
           if (newRoom.status === 'finished') {
@@ -219,6 +232,10 @@ function GameContent() {
 
     const timer = setInterval(() => {
       setTimeLeft((prev) => {
+        if (prev <= 6 && prev > 1 && !warningPlayedRef.current && soundEnabled) {
+          warningPlayedRef.current = true
+          sounds.warning()
+        }
         if (prev <= 1) {
           clearInterval(timer)
           // Use timeout to avoid calling handleSubmit during render
@@ -248,6 +265,7 @@ function GameContent() {
       correct = checkGuess(guess, answerToCheck || '')
     }
 
+    setTimedOut(timeout)
     setAnswered(true)
     setIsCorrect(correct)
     setShowResult(true)
@@ -269,7 +287,18 @@ function GameContent() {
 
     // Play sound
     if (soundEnabled) {
-      correct ? sounds.correct() : sounds.wrong()
+      if (correct) {
+        const nextStreak = correctStreak + 1
+        setCorrectStreak(nextStreak)
+        sounds.gameCorrect(nextStreak, currentQ >= room.questions.length - 1)
+      } else {
+        setCorrectStreak(0)
+        sounds.gameWrong()
+      }
+    } else if (correct) {
+      setCorrectStreak((prev) => prev + 1)
+    } else {
+      setCorrectStreak(0)
     }
 
     // Update score with optimistic concurrency to reduce overwrite races for 2-5 players.
@@ -338,9 +367,11 @@ function GameContent() {
     setGuess('')
     setAnswered(false)
     setIsCorrect(null)
+    setTimedOut(false)
     setShowResult(false)
     setTimeLeft(room.timer_duration)
     setQuestionStartTime(Date.now())
+    warningPlayedRef.current = false
 
     await supabase
       .from('multiplayer_rooms')
@@ -350,6 +381,8 @@ function GameContent() {
 
   const finishGame = async () => {
     if (!room || !user) return
+
+    sounds.stopGameMusicLoop()
 
     // Mark game as finished (host only)
     if (user.id === room.host_id) {
@@ -515,7 +548,7 @@ function GameContent() {
               }`}
             >
               <p className={`text-2xl font-bold mb-2 flex items-center justify-center gap-2 ${isCorrect ? 'text-electric-lime' : 'text-hot-pink'}`}>
-                {isCorrect ? <><CheckIcon size={24} /> Correct!</> : <><XIcon size={24} /> Wrong!</>}
+                {isCorrect ? <><CheckIcon size={24} /> Correct!</> : <><XIcon size={24} /> {timedOut ? "Time's Up!" : 'Wrong!'}</>}
               </p>
               <p className="text-lg">
                 {isJourney ? question.answer : question.name}

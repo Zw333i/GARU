@@ -306,7 +306,23 @@ export function StatGlossary() {
       className="glass rounded-2xl p-6 h-full min-h-[600px] flex flex-col"
     >
       <h2 className="text-xl font-display font-bold mb-4 flex items-center gap-2">
-        <span className="text-2xl">📖</span>
+        <svg
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="text-electric-lime"
+          aria-hidden="true"
+        >
+          <path d="M3 6.5A2.5 2.5 0 0 1 5.5 4H11v16H5.5A2.5 2.5 0 0 0 3 22V6.5z" />
+          <path d="M21 6.5A2.5 2.5 0 0 0 18.5 4H13v16h5.5A2.5 2.5 0 0 1 21 22V6.5z" />
+          <path d="M8 8h1.5" />
+          <path d="M14.5 8H16" />
+        </svg>
         Stat Glossary
       </h2>
 

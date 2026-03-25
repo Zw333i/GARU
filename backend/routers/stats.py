@@ -423,6 +423,49 @@ def _fetch_and_cache_shot_data(player_id: int, season: str, force_refresh: bool 
     }
 
 
+def _season_label(start_year: int) -> str:
+    return f"{start_year}-{(start_year + 1) % 100:02d}"
+
+
+def _season_start_year(season: str) -> Optional[int]:
+    try:
+        return int(str(season).split("-")[0])
+    except Exception:
+        return None
+
+
+def _fetch_shot_data_with_fallback(player_id: int, season: str, force_refresh: bool = False):
+    """
+    Try requested season first, then fall back to up to 2 previous seasons.
+    This prevents empty charts for players with no attempts in the default season.
+    """
+    seasons_to_try = [season]
+    start_year = _season_start_year(season)
+    if start_year is not None:
+        seasons_to_try.extend([
+            _season_label(start_year - 1),
+            _season_label(start_year - 2),
+        ])
+
+    attempted: set[str] = set()
+    for idx, season_label in enumerate(seasons_to_try):
+        if season_label in attempted:
+            continue
+        attempted.add(season_label)
+
+        row = _fetch_and_cache_shot_data(
+            player_id,
+            season_label,
+            force_refresh=force_refresh if idx == 0 else False,
+        )
+        if row and row.get("shots"):
+            row["season_used"] = season_label
+            row["season_fallback_used"] = season_label != season
+            return row
+
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -430,10 +473,12 @@ def _fetch_and_cache_shot_data(player_id: int, season: str, force_refresh: bool 
 @router.get("/shot-chart/{player_id}")
 async def get_shot_chart(player_id: int, season: str = "2025-26", refresh: bool = False):
     """Individual shot dots. DB-first, never simulated."""
-    row = _fetch_and_cache_shot_data(player_id, season, force_refresh=refresh)
+    row = _fetch_shot_data_with_fallback(player_id, season, force_refresh=refresh)
     if not row:
         return {
             "player_id": player_id,
+            "season_used": season,
+            "season_fallback_used": False,
             "using_real_data": False,
             "shots": [],
             "stats": {"total_shots": 0, "made": 0, "fg_pct": 0, "three_attempts": 0, "three_made": 0, "three_pct": 0},
@@ -445,6 +490,8 @@ async def get_shot_chart(player_id: int, season: str = "2025-26", refresh: bool 
     threes_made = sum(1 for s in threes if s["made"])
     return {
         "player_id": player_id,
+        "season_used": row.get("season_used", season),
+        "season_fallback_used": row.get("season_fallback_used", False),
         "using_real_data": True,
         "shots": shots,
         "stats": {
@@ -461,11 +508,13 @@ async def get_shot_chart(player_id: int, season: str = "2025-26", refresh: bool 
 @router.get("/shot-zones/{player_id}")
 async def get_shot_zones(player_id: int, season: str = "2025-26", refresh: bool = False):
     """Hex bin zones. DB-first, never simulated."""
-    row = _fetch_and_cache_shot_data(player_id, season, force_refresh=refresh)
+    row = _fetch_shot_data_with_fallback(player_id, season, force_refresh=refresh)
     if not row:
-        return {"player_id": player_id, "using_real_data": False, "total_shots": 0, "fg_pct": 0, "three_pct": 0, "paint_pct": 0, "zones": []}
+        return {"player_id": player_id, "season_used": season, "season_fallback_used": False, "using_real_data": False, "total_shots": 0, "fg_pct": 0, "three_pct": 0, "paint_pct": 0, "zones": []}
     return {
         "player_id": player_id,
+        "season_used": row.get("season_used", season),
+        "season_fallback_used": row.get("season_fallback_used", False),
         "using_real_data": True,
         "total_shots": row["total_shots"],
         "fg_pct": row["fg_pct"],
@@ -478,11 +527,13 @@ async def get_shot_zones(player_id: int, season: str = "2025-26", refresh: bool 
 @router.get("/shot-distribution/{player_id}")
 async def get_shot_distribution(player_id: int, season: str = "2025-26", refresh: bool = False):
     """Five-zone shot distribution. DB-first, never simulated."""
-    row = _fetch_and_cache_shot_data(player_id, season, force_refresh=refresh)
+    row = _fetch_shot_data_with_fallback(player_id, season, force_refresh=refresh)
     if not row:
-        return {"player_id": player_id, "using_real_data": False, "total_shots": 0, "zones": []}
+        return {"player_id": player_id, "season_used": season, "season_fallback_used": False, "using_real_data": False, "total_shots": 0, "zones": []}
     return {
         "player_id": player_id,
+        "season_used": row.get("season_used", season),
+        "season_fallback_used": row.get("season_fallback_used", False),
         "using_real_data": True,
         "total_shots": row["total_shots"],
         "zones": row["distribution"],
