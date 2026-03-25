@@ -39,6 +39,12 @@ interface Room {
   current_question?: number
 }
 
+const ROOM_FETCH_RETRIES = 6
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 function LobbyContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -69,31 +75,35 @@ function LobbyContent() {
   const fetchRoom = useCallback(async () => {
     if (!roomCode) return
 
-    console.log('[Lobby] Fetching room:', roomCode)
-    const { data, error } = await supabase
-      .from('multiplayer_rooms')
-      .select('*')
-      .eq('code', roomCode)
-      .single()
+    for (let attempt = 1; attempt <= ROOM_FETCH_RETRIES; attempt++) {
+      console.log('[Lobby] Fetching room:', roomCode, 'attempt:', attempt)
+      const { data, error } = await supabase
+        .from('multiplayer_rooms')
+        .select('*')
+        .eq('code', roomCode)
+        .maybeSingle()
 
-    if (error) {
-      console.error('[Lobby] Error fetching room:', error)
-      setError('Room not found or has expired')
-      return
+      if (data) {
+        console.log('[Lobby] Room loaded, status:', data.status, 'guest_id:', data.guest_id)
+        setRoom(data as Room)
+
+        // If game started, redirect to game
+        if (data.status === 'playing') {
+          redirectToGame()
+        }
+        return
+      }
+
+      if (error) {
+        console.warn('[Lobby] Fetch room failed:', error)
+      }
+
+      if (attempt < ROOM_FETCH_RETRIES) {
+        await sleep(350)
+      }
     }
 
-    if (!data) {
-      setError('Room not found')
-      return
-    }
-
-    console.log('[Lobby] Room loaded, status:', data.status, 'guest_id:', data.guest_id)
-    setRoom(data as Room)
-
-    // If game started, redirect to game
-    if (data.status === 'playing') {
-      redirectToGame()
-    }
+    setError('Room not found or has expired')
   }, [roomCode, redirectToGame])
 
   // Fetch profiles for all players in the room
@@ -126,7 +136,17 @@ function LobbyContent() {
   }, [room?.players?.length])
 
   useEffect(() => {
-    fetchRoom().then(() => setLoading(false))
+    let cancelled = false
+    ;(async () => {
+      await fetchRoom()
+      if (!cancelled) {
+        setLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
   }, [fetchRoom])
 
   // Real-time subscription
@@ -158,6 +178,10 @@ function LobbyContent() {
       .subscribe((status) => {
         console.log('[Lobby] Subscription status:', status)
         setConnected(status === 'SUBSCRIBED')
+
+        if (status === 'SUBSCRIBED') {
+          fetchRoom()
+        }
       })
 
     return () => {
@@ -165,7 +189,7 @@ function LobbyContent() {
     }
   }, [roomCode, redirectToGame])
 
-  // Polling fallback — re-fetch room every 3s in case real-time isn't working
+  // Polling fallback — aggressive while reconnecting, relaxed when websocket is healthy.
   useEffect(() => {
     if (!roomCode || !room) return
 
@@ -190,10 +214,10 @@ function LobbyContent() {
           }
         }
       }
-    }, 3000)
+    }, connected ? 5000 : 1000)
 
     return () => clearInterval(interval)
-  }, [roomCode, room?.status, room?.players?.length, redirectToGame])
+  }, [roomCode, room?.status, room?.players?.length, redirectToGame, connected])
 
   const handleCopyCode = () => {
     if (roomCode) {
@@ -541,7 +565,13 @@ async function generateQuestions(gameType: string, count: number): Promise<any[]
   if (gameType === 'the-journey') {
     // Fetch journey players from database via backend API
     try {
-      const response = await api.getJourneyPlayers(Math.max(count * 2, 30), 2)
+      const response = await Promise.race([
+        api.getJourneyPlayers(Math.max(count * 2, 30), 2),
+        new Promise<null>((_, reject) =>
+          setTimeout(() => reject(new Error('Journey API timeout')), 8000)
+        ),
+      ])
+
       if (response?.players && response.players.length > 0) {
         const shuffled = [...response.players].sort(() => Math.random() - 0.5)
         return shuffled.slice(0, count).map((p, i) => ({

@@ -374,7 +374,7 @@ export interface Achievement {
   id: string
   name: string
   description: string
-  type: 'first_steps' | 'streak_master' | 'role_player_expert' | 'stat_nerd' | 'perfect_week'
+  type: string
   threshold: number  // Number required to unlock
 }
 
@@ -394,6 +394,11 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: 'role_player_expert', name: 'Role Player Expert', description: 'Correctly guess 50 role players', type: 'role_player_expert', threshold: 50 },
   { id: 'stat_nerd', name: 'Stat Nerd', description: 'View 100 shot charts', type: 'stat_nerd', threshold: 100 },
   { id: 'perfect_week', name: 'Perfect Week', description: 'Complete all daily challenges for a week', type: 'perfect_week', threshold: 7 },
+  { id: 'veteran_grinder', name: 'Veteran Grinder', description: 'Play 25 total games', type: 'veteran_grinder', threshold: 25 },
+  { id: 'legend_grinder', name: 'Legend Grinder', description: 'Play 100 total games', type: 'legend_grinder', threshold: 100 },
+  { id: 'clutch_streak', name: 'Clutch Streak', description: 'Reach a 10-day streak', type: 'clutch_streak', threshold: 10 },
+  { id: 'lab_specialist', name: 'Lab Specialist', description: 'View 250 shot charts', type: 'lab_specialist', threshold: 250 },
+  { id: 'role_player_master', name: 'Role Player Master', description: 'Correctly guess 150 role players', type: 'role_player_master', threshold: 150 },
 ]
 
 // Get user's achievements

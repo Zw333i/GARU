@@ -45,6 +45,12 @@ interface Room {
   updated_at?: string
 }
 
+const ROOM_FETCH_RETRIES = 6
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
 function GameContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -106,22 +112,32 @@ function GameContent() {
   const fetchRoom = useCallback(async () => {
     if (!roomCode) return
 
-    const { data, error } = await supabase
-      .from('multiplayer_rooms')
-      .select('*')
-      .eq('code', roomCode)
-      .single()
+    for (let attempt = 1; attempt <= ROOM_FETCH_RETRIES; attempt++) {
+      const { data, error } = await supabase
+        .from('multiplayer_rooms')
+        .select('*')
+        .eq('code', roomCode)
+        .maybeSingle()
 
-    if (error || !data) {
-      router.push('/multiplayer')
-      return
+      if (data) {
+        setRoom(data as Room)
+        setCurrentQ(data.current_question || 0)
+        setTimeLeft(data.timer_duration)
+        setQuestionStartTime(Date.now())
+        setLoading(false)
+        return
+      }
+
+      if (error) {
+        console.warn('[Game] Initial fetch failed:', error)
+      }
+
+      if (attempt < ROOM_FETCH_RETRIES) {
+        await sleep(300)
+      }
     }
 
-    setRoom(data as Room)
-    setCurrentQ(data.current_question || 0)
-    setTimeLeft(data.timer_duration)
-    setQuestionStartTime(Date.now())
-    setLoading(false)
+    router.push('/multiplayer')
   }, [roomCode, router])
 
   useEffect(() => {
@@ -192,10 +208,10 @@ function GameContent() {
       if (data?.players) {
         setRoom(prev => prev ? { ...prev, players: data.players } : prev)
       }
-    }, 3000)
+    }, connected ? 5000 : 1000)
 
     return () => clearInterval(interval)
-  }, [roomCode, room?.id, router])
+  }, [roomCode, room?.id, router, connected])
 
   // Timer countdown
   useEffect(() => {

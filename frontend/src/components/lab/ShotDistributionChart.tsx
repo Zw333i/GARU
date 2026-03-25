@@ -52,7 +52,14 @@ export function ShotDistributionChart({ selectedPlayer, refreshKey = 0 }: ShotDi
       setIsLoading(true)
       try {
         const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/+$/, '')
-        const res = await fetch(`${API_URL}/api/stats/shot-distribution/${selectedPlayer.id}?t=${Date.now()}`)
+        const forceRefresh = refreshKey > 0
+        const url = forceRefresh
+          ? `${API_URL}/api/stats/shot-distribution/${selectedPlayer.id}?t=${Date.now()}`
+          : `${API_URL}/api/stats/shot-distribution/${selectedPlayer.id}`
+
+        const res = await fetch(url, {
+          cache: forceRefresh ? 'no-store' : 'force-cache',
+        })
         if (res.ok) {
           const data = await res.json()
           if (aborted) return

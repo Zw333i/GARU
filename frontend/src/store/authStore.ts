@@ -7,6 +7,7 @@ interface AuthState {
   session: Session | null
   isLoading: boolean
   isAuthenticated: boolean
+  sessionExpiresAt: number | null
   
   // Actions
   setUser: (user: User | null) => void
@@ -14,6 +15,7 @@ interface AuthState {
   setLoading: (loading: boolean) => void
   signOut: () => Promise<void>
   refreshSession: () => Promise<void>
+  isSessionExpiringSoon: () => boolean
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
@@ -21,6 +23,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   session: null,
   isLoading: true, // Start as loading until we verify session
   isAuthenticated: false,
+  sessionExpiresAt: null,
 
   setUser: (user) => set({ 
     user, 
@@ -31,6 +34,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     session,
     user: session?.user || null,
     isAuthenticated: !!session?.user,
+    sessionExpiresAt: session?.expires_at ? session.expires_at * 1000 : null,
   }),
 
   setLoading: (isLoading) => set({ isLoading }),
@@ -57,12 +61,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         session,
         user: session?.user || null,
         isAuthenticated: !!session?.user,
+        sessionExpiresAt: session?.expires_at ? session.expires_at * 1000 : null,
         isLoading: false,
       })
     } catch (error) {
       console.error('Error refreshing session:', error)
-      set({ user: null, session: null, isAuthenticated: false, isLoading: false })
+      set({ user: null, session: null, isAuthenticated: false, sessionExpiresAt: null, isLoading: false })
     }
+  },
+
+  isSessionExpiringSoon: () => {
+    const { sessionExpiresAt } = get()
+    if (!sessionExpiresAt) return false
+    // Treat sessions with less than 10 minutes left as expiring soon.
+    return (sessionExpiresAt - Date.now()) <= 10 * 60 * 1000
   },
 }))
 

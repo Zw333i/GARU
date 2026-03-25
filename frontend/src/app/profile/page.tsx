@@ -29,7 +29,14 @@ const achievementIcons: Record<string, React.FC<{ size?: number; className?: str
   role_player_expert: TargetIcon,
   stat_nerd: ChartIcon,
   perfect_week: StarIcon,
+  veteran_grinder: BasketballIcon,
+  legend_grinder: TrophyIcon,
+  clutch_streak: FireIcon,
+  lab_specialist: ChartIcon,
+  role_player_master: TargetIcon,
 }
+
+const ACTIVITY_ITEMS_PER_PAGE = 5
 
 // Helper for relative time display
 function getTimeAgo(dateStr: string): string {
@@ -56,6 +63,7 @@ export default function ProfilePage() {
     gameHistory,
     isStatsLoaded, 
     isStatsLoading, 
+    statsLastFetchedAt,
     fetchUserStats,
     refreshStats,
   } = useSessionDataStore()
@@ -97,6 +105,7 @@ export default function ProfilePage() {
   const [customAvatarUrl, setCustomAvatarUrl] = useState<string | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [activityPage, setActivityPage] = useState(1)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
   // Fetch custom avatar URL from database
@@ -195,12 +204,15 @@ export default function ProfilePage() {
     if (user && isAuthenticated) {
       if (!isStatsLoaded && !isStatsLoading) {
         fetchUserStats(user.id)
-      } else if (isStatsLoaded) {
-        // Always refresh stats on profile page visit to get latest data
-        refreshStats()
+      } else if (isStatsLoaded && statsLastFetchedAt) {
+        // Refresh only if cache is stale to keep profile snappy.
+        const isStale = Date.now() - statsLastFetchedAt > 2 * 60 * 1000
+        if (isStale) {
+          refreshStats()
+        }
       }
     }
-  }, [user, isAuthenticated])
+  }, [user, isAuthenticated, isStatsLoaded, isStatsLoading, statsLastFetchedAt, fetchUserStats, refreshStats])
 
   const handleGoogleSignIn = async () => {
     try {
@@ -232,6 +244,27 @@ export default function ProfilePage() {
       Icon,
     }
   })
+
+  const sortedGameHistory = useMemo(
+    () => [...gameHistory].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
+    [gameHistory]
+  )
+  const totalActivityPages = Math.max(1, Math.ceil(sortedGameHistory.length / ACTIVITY_ITEMS_PER_PAGE))
+  const paginatedActivity = useMemo(() => {
+    const start = (activityPage - 1) * ACTIVITY_ITEMS_PER_PAGE
+    const end = start + ACTIVITY_ITEMS_PER_PAGE
+    return sortedGameHistory.slice(start, end)
+  }, [sortedGameHistory, activityPage])
+
+  useEffect(() => {
+    setActivityPage(1)
+  }, [sortedGameHistory.length])
+
+  useEffect(() => {
+    if (activityPage > totalActivityPages) {
+      setActivityPage(totalActivityPages)
+    }
+  }, [activityPage, totalActivityPages])
 
   return (
     <div className="min-h-screen px-4 py-6 md:px-8 lg:px-12">
@@ -478,7 +511,7 @@ export default function ProfilePage() {
           
           {gameHistory.length > 0 ? (
             <div className="space-y-3">
-              {gameHistory.slice(0, 10).map((game) => {
+              {paginatedActivity.map((game) => {
                 const gameNames: Record<string, string> = {
                   'whos-that': "Who's That?",
                   'the-journey': 'The Journey',
@@ -524,6 +557,30 @@ export default function ProfilePage() {
                   </div>
                 )
               })}
+
+              {totalActivityPages > 1 && (
+                <div className="flex items-center justify-between pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setActivityPage((prev) => Math.max(1, prev - 1))}
+                    disabled={activityPage === 1}
+                    className="px-3 py-1.5 rounded-lg border border-surface text-sm text-ghost-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface/60 transition-colors"
+                  >
+                    Previous
+                  </button>
+                  <p className="text-xs text-muted">
+                    Page {activityPage} of {totalActivityPages}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setActivityPage((prev) => Math.min(totalActivityPages, prev + 1))}
+                    disabled={activityPage === totalActivityPages}
+                    className="px-3 py-1.5 rounded-lg border border-surface text-sm text-ghost-white disabled:opacity-40 disabled:cursor-not-allowed hover:bg-surface/60 transition-colors"
+                  >
+                    Next
+                  </button>
+                </div>
+              )}
             </div>
           ) : (
             <div className="text-center py-8 text-muted">

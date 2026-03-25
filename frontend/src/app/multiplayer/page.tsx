@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
@@ -40,6 +40,61 @@ const QUESTION_OPTIONS = [5, 10, 15, 20]
 const TIMER_OPTIONS = [10, 15, 20, 30] // seconds per question
 const MIN_PLAYERS = 2
 const MAX_PLAYERS = 5
+const USER_READY_MAX_ATTEMPTS = 8
+const USER_READY_DELAY_MS = 700
+const ROOM_OP_MAX_ATTEMPTS = 4
+const AUTH_CHECK_TIMEOUT_MS = 5000
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out`))
+    }, timeoutMs)
+
+    promise
+      .then((value) => {
+        clearTimeout(timer)
+        resolve(value)
+      })
+      .catch((err) => {
+        clearTimeout(timer)
+        reject(err)
+      })
+  })
+}
+
+async function hasActiveAuthSession(): Promise<boolean> {
+  try {
+    // Primary path: use session object.
+    const sessionData = await withTimeout(
+      supabase.auth.getSession(),
+      AUTH_CHECK_TIMEOUT_MS,
+      'auth.getSession'
+    )
+    if (sessionData?.data?.session) {
+      return true
+    }
+  } catch (err) {
+    console.warn('[Multiplayer] getSession timed out/failed, falling back to getUser:', err)
+  }
+
+  try {
+    // Fallback path: user presence usually means valid auth context.
+    const userData = await withTimeout(
+      supabase.auth.getUser(),
+      AUTH_CHECK_TIMEOUT_MS,
+      'auth.getUser'
+    )
+    return !!userData?.data?.user
+  } catch (err) {
+    console.warn('[Multiplayer] getUser fallback failed:', err)
+    return false
+  }
+}
 
 // Generate room code
 function generateRoomCode(): string {
@@ -54,45 +109,42 @@ function generateRoomCode(): string {
 // Ensure user exists in public.users table (FK requirement)
 async function ensureUserExists(userId: string): Promise<boolean> {
   try {
-    console.log('[Multiplayer] Checking if user exists:', userId)
-    const { data, error: selectError } = await supabase
-      .from('users')
-      .select('id')
-      .eq('id', userId)
-      .single()
+    console.log('[Multiplayer] Waiting for user profile readiness:', userId)
 
-    if (selectError) {
-      console.log('[Multiplayer] User lookup error (expected if new):', selectError.code)
+    for (let attempt = 1; attempt <= USER_READY_MAX_ATTEMPTS; attempt++) {
+      const { data } = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', userId)
+        .maybeSingle()
+
+      if (data?.id) {
+        console.log('[Multiplayer] User exists in public.users')
+        return true
+      }
+
+      // Try a best-effort upsert to accelerate first-login profile creation.
+      const { data: authData } = await supabase.auth.getUser()
+      if (authData?.user) {
+        await supabase
+          .from('users')
+          .upsert(
+            {
+              id: userId,
+              username: authData.user.user_metadata?.name || 'Player_' + userId.slice(0, 8),
+              avatar_url: authData.user.user_metadata?.avatar_url || null,
+            },
+            { onConflict: 'id' }
+          )
+      }
+
+      if (attempt < USER_READY_MAX_ATTEMPTS) {
+        await sleep(USER_READY_DELAY_MS)
+      }
     }
 
-    if (data) {
-      console.log('[Multiplayer] User exists in public.users')
-      return true
-    }
-
-    // User doesn't exist — create from auth data
-    console.log('[Multiplayer] User not found, creating...')
-    const { data: authData } = await supabase.auth.getUser()
-    if (!authData?.user) {
-      console.error('[Multiplayer] No auth user found')
-      return false
-    }
-
-    const { error: insertError } = await supabase
-      .from('users')
-      .insert({
-        id: userId,
-        username: authData.user.user_metadata?.name || 'Player_' + userId.slice(0, 8),
-        avatar_url: authData.user.user_metadata?.avatar_url || null,
-      })
-
-    // Ignore duplicate key errors (race condition)
-    if (insertError && insertError.code !== '23505') {
-      console.error('[Multiplayer] Failed to create user:', insertError)
-      return false
-    }
-    console.log('[Multiplayer] User created successfully')
-    return true
+    console.error('[Multiplayer] User profile not ready in time')
+    return false
   } catch (err) {
     console.error('[Multiplayer] ensureUserExists error:', err)
     return false
@@ -114,6 +166,7 @@ function MultiplayerContent() {
   const [joinCode, setJoinCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const autoJoinAttemptedRef = useRef(false)
 
   useEffect(() => {
     // Auto-fill join code from URL param (from QR code scan)
@@ -122,6 +175,20 @@ function MultiplayerContent() {
       setMode('join')
     }
   }, [joinParam])
+
+  // Auto-join once when code is present and auth is ready.
+  useEffect(() => {
+    if (!joinParam || autoJoinAttemptedRef.current) return
+    if (authLoading || !isAuthenticated || !user) return
+
+    const normalized = joinParam.toUpperCase().trim()
+    if (normalized.length !== 6) return
+
+    autoJoinAttemptedRef.current = true
+    setJoinCode(normalized)
+    handleJoinRoom()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [joinParam, authLoading, isAuthenticated, user])
 
   // Clear error when switching modes
   useEffect(() => {
@@ -144,14 +211,14 @@ function MultiplayerContent() {
     try {
       // 1. Verify active Supabase auth session (required for RLS)
       console.log('[Multiplayer] Step 1: Checking auth session...')
-      const { data: sessionData } = await supabase.auth.getSession()
-      if (!sessionData?.session) {
+      const hasSession = await hasActiveAuthSession()
+      if (!hasSession) {
         console.error('[Multiplayer] No active session')
         setError('Your session has expired. Please sign in again.')
         setLoading(false)
         return
       }
-      console.log('[Multiplayer] Session active for:', sessionData.session.user.email)
+      console.log('[Multiplayer] Session check passed')
 
       // 2. Ensure user exists in public.users table (FK requirement)
       console.log('[Multiplayer] Step 2: Ensuring user exists...')
@@ -165,39 +232,67 @@ function MultiplayerContent() {
 
       // 3. Create room
       console.log('[Multiplayer] Step 3: Creating room...')
-      const roomCode = generateRoomCode()
-      console.log('[Multiplayer] Room code:', roomCode, 'Game:', selectedGame)
+      let roomCode = ''
       
-      const { data, error: createError } = await supabase
-        .from('multiplayer_rooms')
-        .insert({
-          code: roomCode,
-          host_id: user.id,
-          game_type: selectedGame,
-          question_count: questionCount,
-          timer_duration: timerDuration,
-          status: 'waiting',
-          max_players: MAX_PLAYERS,
-          players: [{ 
-            id: user.id, 
-            score: 0, 
-            answers: [],
-            username: user.user_metadata?.name || 'Host',
-          }],
-        })
-        .select()
+      let created = false
 
-      if (createError) {
-        console.error('[Multiplayer] Room creation failed:', createError.code, createError.message, createError.details, createError.hint)
+      for (let attempt = 1; attempt <= ROOM_OP_MAX_ATTEMPTS; attempt++) {
+        roomCode = generateRoomCode()
+        console.log('[Multiplayer] Room code:', roomCode, 'Game:', selectedGame)
+
+        const { error: createError } = await supabase
+          .from('multiplayer_rooms')
+          .insert({
+            code: roomCode,
+            host_id: user.id,
+            game_type: selectedGame,
+            question_count: questionCount,
+            timer_duration: timerDuration,
+            status: 'waiting',
+            max_players: MAX_PLAYERS,
+            players: [{
+              id: user.id,
+              score: 0,
+              answers: [],
+              username: user.user_metadata?.name || 'Host',
+            }],
+          })
+          .select('id')
+          .maybeSingle()
+
+        if (!createError) {
+          created = true
+          break
+        }
+
+        console.warn(`[Multiplayer] Create room attempt ${attempt} failed:`, createError)
+
+        // Handle rare code collision by generating a new code and retrying.
+        if (createError.code === '23505') {
+          continue
+        }
+
+        // FK/profile race on first sign-in; wait and retry without manual refresh.
+        if (createError.code === '23503' && attempt < ROOM_OP_MAX_ATTEMPTS) {
+          await ensureUserExists(user.id)
+          await sleep(500)
+          continue
+        }
+
         if (createError.code === '42P01') {
           setError('Multiplayer is not set up yet. Please contact the admin to run the database migration.')
         } else if (createError.code === '42501' || createError.message?.includes('permission')) {
           setError('Permission denied. Try signing out and back in.')
         } else if (createError.code === '23503') {
-          setError('Account not found in database. Try signing out and back in.')
+          setError('Account still syncing. Please wait a moment and try again.')
         } else {
           setError(createError.message || 'Failed to create room')
         }
+        return
+      }
+
+      if (!created) {
+        setError('Could not create room right now. Please try again.')
         return
       }
 
@@ -225,8 +320,8 @@ function MultiplayerContent() {
 
     try {
       // Verify session
-      const { data: sessionData } = await supabase.auth.getSession()
-      if (!sessionData?.session) {
+      const hasSession = await hasActiveAuthSession()
+      if (!hasSession) {
         setError('Your session has expired. Please sign in again.')
         setLoading(false)
         return
@@ -238,7 +333,7 @@ function MultiplayerContent() {
       let joined = false
 
       // Retry to avoid lost updates when multiple players join at once.
-      for (let attempt = 0; attempt < 4; attempt++) {
+      for (let attempt = 0; attempt < ROOM_OP_MAX_ATTEMPTS; attempt++) {
         const { data: room, error: findError } = await supabase
           .from('multiplayer_rooms')
           .select('*')
@@ -247,6 +342,10 @@ function MultiplayerContent() {
           .single()
 
         if (findError || !room) {
+          if (attempt < ROOM_OP_MAX_ATTEMPTS - 1) {
+            await sleep(350)
+            continue
+          }
           setError('Room not found or game already started')
           return
         }
@@ -293,6 +392,12 @@ function MultiplayerContent() {
           .maybeSingle()
 
         if (joinError) {
+          // FK/profile race during first sign-in; wait then retry.
+          if (joinError.code === '23503' && attempt < ROOM_OP_MAX_ATTEMPTS - 1) {
+            await ensureUserExists(user.id)
+            await sleep(500)
+            continue
+          }
           console.error('Failed to join room:', joinError)
           setError(joinError.message || 'Failed to join room')
           return

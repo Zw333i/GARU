@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useCallback } from 'react'
+import { useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useUserStore } from '@/store/userStore'
 import { useAuthStore } from '@/store/authStore'
 import { usePlayersStore } from '@/store/playersStore'
 import { useSessionDataStore } from '@/store/sessionDataStore'
+import { prefetchLabForPlayer } from '@/lib/labPrefetch'
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const setUser = useUserStore((state) => state.setUser)
@@ -13,43 +14,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = useUserStore((state) => state.logout)
   
   // Centralized auth state
-  const { setSession, setLoading } = useAuthStore()
+  const { setSession, setLoading, refreshSession, isSessionExpiringSoon } = useAuthStore()
   
   // Session data stores
   const fetchPlayers = usePlayersStore((state) => state.fetchPlayers)
+  const players = usePlayersStore((state) => state.players)
+  const playersLoaded = usePlayersStore((state) => state.isLoaded)
   const fetchUserStats = useSessionDataStore((state) => state.fetchUserStats)
+  const sessionUserStats = useSessionDataStore((state) => state.userStats)
   const clearSessionData = useSessionDataStore((state) => state.clearSession)
 
-  // Load user stats from Supabase (legacy - still sync to userStore)
-  const loadUserStats = useCallback(async (userId: string) => {
-    try {
-      // Fetch user stats using session store (cached)
-      await fetchUserStats(userId)
-      
-      // Also sync to legacy userStore for components that use it
-      const { data: userData } = await supabase
-        .from('users')
-        .select('wins, losses, xp, level, current_streak, best_streak, daily_challenges_completed, games_played')
-        .eq('id', userId)
-        .single()
-      
-      if (userData) {
-        const gamesFromDb = userData.games_played || 0
-        const gamesFromWinsLosses = (userData.wins || 0) + (userData.losses || 0)
-        
-        updateStats({
-          gamesPlayed: gamesFromDb > 0 ? gamesFromDb : gamesFromWinsLosses,
-          currentStreak: userData.current_streak || 0,
-          bestStreak: userData.best_streak || 0,
-          dailyChallengesCompleted: userData.daily_challenges_completed || 0,
-          xp: userData.xp || 0,
-          level: userData.level || 1,
-        })
-      }
-    } catch (error) {
-      console.error('Error loading user stats:', error)
-    }
-  }, [fetchUserStats, updateStats])
+  // Sync centralized session stats to legacy userStore without extra DB query.
+  useEffect(() => {
+    if (!sessionUserStats) return
+
+    updateStats({
+      gamesPlayed: sessionUserStats.gamesPlayed,
+      currentStreak: sessionUserStats.currentStreak,
+      bestStreak: sessionUserStats.bestStreak,
+      dailyChallengesCompleted: sessionUserStats.dailyChallengesCompleted,
+      xp: sessionUserStats.xp,
+      level: sessionUserStats.level,
+    })
+  }, [sessionUserStats, updateStats])
 
   useEffect(() => {
     // Pre-fetch players data on app load (session-cached)
@@ -75,9 +62,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             email: session.user.email || undefined,
             avatarUrl: session.user.user_metadata?.avatar_url || undefined,
           })
-          
-          // Load stats from Supabase (session-cached)
-          await loadUserStats(session.user.id)
+
+          // Warm user session data immediately after auth bootstraps.
+          void fetchUserStats(session.user.id)
         }
       } catch (error) {
         console.error('Error checking session:', error)
@@ -86,6 +73,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     checkSession()
+
+    // Proactively refresh session shortly before expiry to reduce auth hiccups.
+    const refreshInterval = setInterval(async () => {
+      if (isSessionExpiringSoon()) {
+        await refreshSession()
+      }
+    }, 60 * 1000)
+
+    const onVisibilityChange = async () => {
+      if (document.visibilityState === 'visible' && isSessionExpiringSoon()) {
+        await refreshSession()
+      }
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
 
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -110,25 +111,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           // Sync user profile to Supabase on sign in
           if (event === 'SIGNED_IN') {
-            try {
-              await supabase.from('users').upsert({
-                id: session.user.id,
-                username: session.user.user_metadata?.name || 
-                          session.user.user_metadata?.full_name ||
-                          session.user.email?.split('@')[0] || 
-                          `Player_${session.user.id.slice(0, 8)}`,
-                avatar_url: session.user.user_metadata?.avatar_url,
-                updated_at: new Date().toISOString(),
-              }, {
-                onConflict: 'id',
-              })
-            } catch (error) {
-              console.error('Error syncing user profile:', error)
-            }
+            void (async () => {
+              try {
+                await supabase.from('users').upsert({
+                  id: session.user.id,
+                  username: session.user.user_metadata?.name || 
+                            session.user.user_metadata?.full_name ||
+                            session.user.email?.split('@')[0] || 
+                            `Player_${session.user.id.slice(0, 8)}`,
+                  avatar_url: session.user.user_metadata?.avatar_url,
+                  updated_at: new Date().toISOString(),
+                }, {
+                  onConflict: 'id',
+                })
+              } catch (error) {
+                console.error('Error syncing user profile:', error)
+              }
+            })()
           }
-          
-          // Load stats from Supabase on any auth event (session-cached)
-          await loadUserStats(session.user.id)
+
+          // Prefetch profile/history/achievements in background on every valid auth event.
+          void fetchUserStats(session.user.id)
         } else {
           // User logged out - clear session data
           clearSessionData()
@@ -137,8 +140,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     )
 
-    return () => subscription.unsubscribe()
-  }, [setUser, updateStats, logout, fetchPlayers, loadUserStats, setSession, setLoading, clearSessionData])
+    return () => {
+      clearInterval(refreshInterval)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      subscription.unsubscribe()
+    }
+  }, [setUser, logout, fetchPlayers, fetchUserStats, setSession, setLoading, clearSessionData, refreshSession, isSessionExpiringSoon])
+
+  useEffect(() => {
+    if (!playersLoaded || players.length === 0) return
+
+    // Warm one representative player's Lab data in the background.
+    void prefetchLabForPlayer(players[0].id)
+  }, [playersLoaded, players])
 
   return <>{children}</>
 }

@@ -57,6 +57,8 @@ interface SessionDataState {
   clearSession: () => void
 }
 
+const STATS_CACHE_TTL_MS = 2 * 60 * 1000
+
 const initialStats: UserStats = {
   gamesPlayed: 0,
   wins: 0,
@@ -112,9 +114,11 @@ export const useSessionDataStore = create<SessionDataState>()(
           })
         }
         
-        // Skip if already loaded for this user
-        if (state.isStatsLoaded && state.userId === userId) {
-          console.log('[CACHE] User stats already cached, skipping fetch')
+        // Skip if already loaded for this user and still fresh.
+        const isSameUser = state.userId === userId
+        const isFresh = !!state.statsLastFetchedAt && (Date.now() - state.statsLastFetchedAt) < STATS_CACHE_TTL_MS
+        if (state.isStatsLoaded && isSameUser && isFresh) {
+          console.log('[CACHE] User stats already cached and fresh, skipping fetch')
           return
         }
         
@@ -127,12 +131,30 @@ export const useSessionDataStore = create<SessionDataState>()(
         console.log('[FETCH] Fetching user stats from database...')
 
         try {
-          // Fetch user stats
-          const { data: userData, error: userError } = await supabase
-            .from('users')
-            .select('xp, level, wins, losses, current_streak, best_streak, games_played, daily_challenges_completed')
-            .eq('id', userId)
-            .single()
+          const [
+            userResult,
+            achievementsResult,
+            historyResult,
+          ] = await Promise.allSettled([
+            supabase
+              .from('users')
+              .select('xp, level, wins, losses, current_streak, best_streak, games_played, daily_challenges_completed')
+              .eq('id', userId)
+              .single(),
+            supabase
+              .from('user_achievements')
+              .select('*')
+              .eq('user_id', userId),
+            supabase
+              .from('game_scores')
+              .select('*')
+              .eq('user_id', userId)
+              .order('created_at', { ascending: false })
+              .limit(20),
+          ])
+
+          const userData = userResult.status === 'fulfilled' ? userResult.value.data : null
+          const userError = userResult.status === 'fulfilled' ? userResult.value.error : new Error('Failed to fetch user')
 
           let stats = { ...initialStats }
           
@@ -154,44 +176,22 @@ export const useSessionDataStore = create<SessionDataState>()(
             }
           }
 
-          // Fetch achievements
           let achievements: UserAchievement[] = []
-          try {
-            const { data: achievementData } = await supabase
-              .from('user_achievements')
-              .select('*')
-              .eq('user_id', userId)
-            
-            if (achievementData) {
-              achievements = achievementData as UserAchievement[]
-            }
-          } catch {
-            // Achievements table might not exist
+          if (achievementsResult.status === 'fulfilled' && achievementsResult.value.data) {
+            achievements = achievementsResult.value.data as UserAchievement[]
           }
 
-          // Fetch recent game history
           let gameHistory: GameHistoryEntry[] = []
-          try {
-            const { data: historyData } = await supabase
-              .from('game_scores')
-              .select('*')
-              .eq('user_id', userId)
-              .order('created_at', { ascending: false })
-              .limit(20)
-            
-            if (historyData) {
-              gameHistory = historyData.map((g: any) => ({
-                id: g.id,
-                gameType: g.game_type,
-                score: g.score,
-                correctAnswers: g.correct_answers || 0,
-                questionsAnswered: g.questions_answered || 0,
-                timeTaken: g.time_taken || 0,
-                createdAt: g.created_at,
-              }))
-            }
-          } catch {
-            // Game history table might not exist
+          if (historyResult.status === 'fulfilled' && historyResult.value.data) {
+            gameHistory = historyResult.value.data.map((g: any) => ({
+              id: g.id,
+              gameType: g.game_type,
+              score: g.score,
+              correctAnswers: g.correct_answers || 0,
+              questionsAnswered: g.questions_answered || 0,
+              timeTaken: g.time_taken || 0,
+              createdAt: g.created_at,
+            }))
           }
 
           console.log(`[OK] Loaded user stats (Level ${stats.level}, ${stats.gamesPlayed} games)`)

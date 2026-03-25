@@ -113,8 +113,16 @@ export function HexShotChart({ selectedPlayer, refreshKey = 0 }: HexShotChartPro
     const fetchZones = async () => {
       setIsLoading(true)
       try {
+        const forceRefresh = refreshKey > 0
+        const url = forceRefresh
+          ? `${API_URL}/api/stats/shot-zones/${selectedPlayer.id}?t=${Date.now()}`
+          : `${API_URL}/api/stats/shot-zones/${selectedPlayer.id}`
+
         const controller = new AbortController()
-        const res = await fetch(`${API_URL}/api/stats/shot-zones/${selectedPlayer.id}?t=${Date.now()}`, { signal: controller.signal })
+        const res = await fetch(url, {
+          signal: controller.signal,
+          cache: forceRefresh ? 'no-store' : 'force-cache',
+        })
         if (res.ok) {
           const data = await res.json()
           if (aborted) return
