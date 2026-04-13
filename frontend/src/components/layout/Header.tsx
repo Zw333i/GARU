@@ -72,8 +72,8 @@ export function Header() {
       const gameTypeNames: Record<string, string> = {
         'whos-that': "Who's That?",
         'the-journey': 'The Journey',
-        'blind-comparison': 'Blind Comparison',
-        'stat-attack': 'Stat Attack',
+        'blind-comparison': 'Would You Rather Have',
+        'resume-check': 'Resume Check',
       }
       const gameName = gameTypeNames[game.gameType] || game.gameType
       

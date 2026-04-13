@@ -1,133 +1,254 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { useEffect, useMemo, useState } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import Link from 'next/link'
-import { CompareIcon, ArrowLeftIcon, ArrowRightIcon } from '@/components/icons'
-import { sounds } from '@/lib/sounds'
-import { useSettingsStore } from '@/store/settingsStore'
-import { useKeyboardControls } from '@/hooks/useKeyboardControls'
-import { useStarPlayers, FALLBACK_STAR_PLAYERS, GamePlayer } from '@/hooks/useGamePlayers'
-import { supabase, saveGameScore } from '@/lib/supabase'
+import { ArrowLeftIcon, ArrowRightIcon, CompareIcon } from '@/components/icons'
 import { BasketballLoader } from '@/components/ui/BasketballLoader'
+import { useKeyboardControls } from '@/hooks/useKeyboardControls'
+import { FALLBACK_STAR_PLAYERS, GamePlayer, useStarPlayers } from '@/hooks/useGamePlayers'
+import { sounds } from '@/lib/sounds'
+import { saveGameScore, supabase } from '@/lib/supabase'
+import { useSettingsStore } from '@/store/settingsStore'
 import { useSessionDataStore } from '@/store/sessionDataStore'
 
-// Silhouette image URL
-const SILHOUETTE_URL = 'https://th.bing.com/th/id/R.2855dc2b9d9f849e227dbe9f73642b27?rik=%2bcUVqCXHhW1S%2bA&riu=http%3a%2f%2fgetdrawings.com%2fimg%2fmale-silhouette-head-31.png&ehk=yxlY0knr%2bEmdM%2baGFVqzo0zaLgigbwObIl%2bXINZzWJ0%3d&risl=&pid=ImgRaw&r=0'
+const SILHOUETTE_URL =
+  'https://th.bing.com/th/id/R.2855dc2b9d9f849e227dbe9f73642b27?rik=%2bcUVqCXHhW1S%2bA&riu=http%3a%2f%2fgetdrawings.com%2fimg%2fmale-silhouette-head-31.png&ehk=yxlY0knr%2bEmdM%2baGFVqzo0zaLgigbwObIl%2bXINZzWJ0%3d&risl=&pid=ImgRaw&r=0'
 
-interface Comparison {
-  playerA: GamePlayer
-  playerB: GamePlayer
+interface EraSnapshot {
+  id: string
+  playerId: number
+  name: string
+  team: string
+  timeframe: string
+  ppg: number
+  apg: number
+  rpg: number
+  threePtPct: number
+  fgPct: number
 }
 
-// Generate matchups with SIMILAR statlines for harder comparisons
-function generateMatchups(players: GamePlayer[], count: number = 5): Comparison[] {
-  if (players.length < 2) return []
-  
-  // Calculate total stats for each player
-  const playersWithTotal = players.map(p => ({
-    player: p,
-    total: p.ppg + p.rpg + p.apg
-  }))
-  
-  // Sort by total stats
-  playersWithTotal.sort((a, b) => b.total - a.total)
-  
+interface Comparison {
+  playerA: EraSnapshot
+  playerB: EraSnapshot
+}
+
+const ERA_SNAPSHOTS: EraSnapshot[] = [
+  { id: 'paul-george-2017-playoffs', playerId: 202331, name: 'Paul George', team: 'IND', timeframe: '2017 Playoffs', ppg: 28.0, apg: 7.3, rpg: 8.8, threePtPct: 42.9, fgPct: 44.7 },
+  { id: 'curry-2017-playoffs', playerId: 201939, name: 'Stephen Curry', team: 'GSW', timeframe: '2017 Playoffs', ppg: 28.1, apg: 6.7, rpg: 6.2, threePtPct: 41.0, fgPct: 48.4 },
+  { id: 'lebron-2018-finals', playerId: 2544, name: 'LeBron James', team: 'CLE', timeframe: '2018 Finals', ppg: 34.0, apg: 10.0, rpg: 8.5, threePtPct: 35.3, fgPct: 52.7 },
+  { id: 'durant-2018-finals', playerId: 201142, name: 'Kevin Durant', team: 'GSW', timeframe: '2018 Finals', ppg: 28.8, apg: 7.5, rpg: 10.8, threePtPct: 40.9, fgPct: 52.6 },
+  { id: 'kobe-2010-finals', playerId: 977, name: 'Kobe Bryant', team: 'LAL', timeframe: '2010 Finals', ppg: 28.6, apg: 3.9, rpg: 8.0, threePtPct: 31.6, fgPct: 40.5 },
+  { id: 'wade-2006-finals', playerId: 2548, name: 'Dwyane Wade', team: 'MIA', timeframe: '2006 Finals', ppg: 34.7, apg: 3.8, rpg: 7.8, threePtPct: 27.3, fgPct: 46.8 },
+  { id: 'rose-2011-season', playerId: 201565, name: 'Derrick Rose', team: 'CHI', timeframe: '2011 MVP Season', ppg: 25.0, apg: 7.7, rpg: 4.1, threePtPct: 33.2, fgPct: 44.5 },
+  { id: 'harden-2018-season', playerId: 201935, name: 'James Harden', team: 'HOU', timeframe: '2018 MVP Season', ppg: 30.4, apg: 8.8, rpg: 5.4, threePtPct: 36.7, fgPct: 44.9 },
+  { id: 'kawhi-2019-finals', playerId: 202695, name: 'Kawhi Leonard', team: 'TOR', timeframe: '2019 Finals', ppg: 28.5, apg: 4.2, rpg: 9.8, threePtPct: 35.7, fgPct: 43.4 },
+  { id: 'giannis-2021-finals', playerId: 203507, name: 'Giannis Antetokounmpo', team: 'MIL', timeframe: '2021 Finals', ppg: 35.2, apg: 5.0, rpg: 13.2, threePtPct: 20.0, fgPct: 61.8 },
+  { id: 'jokic-2023-finals', playerId: 203999, name: 'Nikola Jokic', team: 'DEN', timeframe: '2023 Finals', ppg: 30.2, apg: 7.2, rpg: 14.0, threePtPct: 42.1, fgPct: 58.3 },
+  { id: 'butler-2020-finals', playerId: 202710, name: 'Jimmy Butler', team: 'MIA', timeframe: '2020 Finals', ppg: 26.2, apg: 9.8, rpg: 8.3, threePtPct: 26.9, fgPct: 55.2 },
+  { id: 'tatum-2022-playoffs', playerId: 1628369, name: 'Jayson Tatum', team: 'BOS', timeframe: '2022 Playoffs', ppg: 26.9, apg: 6.2, rpg: 6.7, threePtPct: 39.3, fgPct: 42.6 },
+  { id: 'brown-2022-playoffs', playerId: 1627759, name: 'Jaylen Brown', team: 'BOS', timeframe: '2022 Playoffs', ppg: 23.1, apg: 3.5, rpg: 6.9, threePtPct: 37.3, fgPct: 47.0 },
+  { id: 'lillard-2019-playoffs', playerId: 203081, name: 'Damian Lillard', team: 'POR', timeframe: '2019 Playoffs', ppg: 26.9, apg: 6.6, rpg: 4.8, threePtPct: 37.7, fgPct: 41.8 },
+  { id: 'booker-2021-playoffs', playerId: 1626164, name: 'Devin Booker', team: 'PHX', timeframe: '2021 Playoffs', ppg: 27.3, apg: 4.5, rpg: 5.6, threePtPct: 32.1, fgPct: 44.7 },
+  { id: 'paul-2021-playoffs', playerId: 101108, name: 'Chris Paul', team: 'PHX', timeframe: '2021 Playoffs', ppg: 19.2, apg: 8.6, rpg: 3.5, threePtPct: 44.6, fgPct: 48.9 },
+  { id: 'dirk-2011-finals', playerId: 1717, name: 'Dirk Nowitzki', team: 'DAL', timeframe: '2011 Finals', ppg: 26.0, apg: 2.0, rpg: 9.7, threePtPct: 36.8, fgPct: 41.6 },
+  { id: 'duncan-2003-finals', playerId: 1495, name: 'Tim Duncan', team: 'SAS', timeframe: '2003 Finals', ppg: 24.2, apg: 5.3, rpg: 17.0, threePtPct: 0.0, fgPct: 49.5 },
+  { id: 'kyrie-2016-finals', playerId: 202681, name: 'Kyrie Irving', team: 'CLE', timeframe: '2016 Finals', ppg: 27.1, apg: 3.9, rpg: 3.9, threePtPct: 40.5, fgPct: 46.8 },
+  { id: 'brunson-2024-playoffs', playerId: 1628973, name: 'Jalen Brunson', team: 'NYK', timeframe: '2024 Playoffs', ppg: 32.4, apg: 7.5, rpg: 3.3, threePtPct: 31.0, fgPct: 44.4 },
+  { id: 'edwards-2024-playoffs', playerId: 1630162, name: 'Anthony Edwards', team: 'MIN', timeframe: '2024 Playoffs', ppg: 27.6, apg: 5.9, rpg: 6.5, threePtPct: 40.0, fgPct: 48.1 },
+  { id: 'haliburton-2024-playoffs', playerId: 1630169, name: 'Tyrese Haliburton', team: 'IND', timeframe: '2024 Playoffs', ppg: 18.7, apg: 8.2, rpg: 4.8, threePtPct: 37.9, fgPct: 48.8 },
+]
+
+function buildCurrentSeasonSnapshots(players: GamePlayer[]): EraSnapshot[] {
+  return players.slice(0, 24).map((player) => {
+    const fgPct = Math.min(58, Math.max(41, 42 + (player.rating - 72) * 0.5))
+    const threePtPct = Math.min(45, Math.max(30, 31 + (player.rating - 72) * 0.45))
+
+    return {
+      id: `current-${player.id}`,
+      playerId: player.id,
+      name: player.name,
+      team: player.team,
+      timeframe: 'Current Season',
+      ppg: Number(player.ppg.toFixed(1)),
+      apg: Number(player.apg.toFixed(1)),
+      rpg: Number(player.rpg.toFixed(1)),
+      threePtPct: Number(threePtPct.toFixed(1)),
+      fgPct: Number(fgPct.toFixed(1)),
+    }
+  })
+}
+
+function getRecentSnapshotIds(): string[] {
+  if (typeof window === 'undefined') return []
+
+  try {
+    const raw = sessionStorage.getItem('wyr-recent-snapshot-ids')
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
+}
+
+function setRecentSnapshotIds(ids: string[]) {
+  if (typeof window === 'undefined') return
+  sessionStorage.setItem('wyr-recent-snapshot-ids', JSON.stringify(ids.slice(-28)))
+}
+
+function shouldShowBothRows(player: EraSnapshot): boolean {
+  return Math.abs(player.apg - player.rpg) < 2
+}
+
+function shootingEdgeExists(a: EraSnapshot, b: EraSnapshot): boolean {
+  return Math.abs(a.threePtPct - b.threePtPct) >= 1 || Math.abs(a.fgPct - b.fgPct) >= 1
+}
+
+function isTooIdentical(a: EraSnapshot, b: EraSnapshot): boolean {
+  return (
+    Math.abs(a.ppg - b.ppg) < 0.15 &&
+    Math.abs(a.apg - b.apg) < 0.15 &&
+    Math.abs(a.rpg - b.rpg) < 0.15
+  )
+}
+
+function pairScore(a: EraSnapshot, b: EraSnapshot): number {
+  const ppgDiff = Math.abs(a.ppg - b.ppg)
+  const apgDiff = Math.abs(a.apg - b.apg)
+  const rpgDiff = Math.abs(a.rpg - b.rpg)
+  const threeDiff = Math.abs(a.threePtPct - b.threePtPct)
+  const fgDiff = Math.abs(a.fgPct - b.fgPct)
+
+  const diffPenalty = ppgDiff * 2.4 + apgDiff * 1.6 + rpgDiff * 1.5 + threeDiff * 1.0 + fgDiff * 0.9
+  const tinyDiffPenalty = (ppgDiff < 0.25 ? 3 : 0) + (apgDiff < 0.2 ? 2 : 0) + (rpgDiff < 0.2 ? 2 : 0)
+
+  return diffPenalty + tinyDiffPenalty
+}
+
+function isValidPair(a: EraSnapshot, b: EraSnapshot): boolean {
+  if (a.playerId === b.playerId) return false
+  if (isTooIdentical(a, b)) return false
+
+  const ppgDiff = Math.abs(a.ppg - b.ppg)
+  const apgDiff = Math.abs(a.apg - b.apg)
+  const rpgDiff = Math.abs(a.rpg - b.rpg)
+
+  if (ppgDiff > 6.5 || apgDiff > 4.5 || rpgDiff > 4.5) return false
+
+  const closeAllAround = ppgDiff < 2.6 && apgDiff < 2 && rpgDiff < 2
+  if (closeAllAround && !shootingEdgeExists(a, b)) return false
+
+  return true
+}
+
+function generateMatchups(players: GamePlayer[], roundCount: number): Comparison[] {
+  const allSnapshots = [...ERA_SNAPSHOTS, ...buildCurrentSeasonSnapshots(players)]
+  if (allSnapshots.length < roundCount * 2) return []
+
+  const recentSet = new Set(getRecentSnapshotIds())
+  const freshPool = allSnapshots.filter((snapshot) => !recentSet.has(snapshot.id))
+  const sourcePool = freshPool.length >= roundCount * 2 ? freshPool : allSnapshots
+  const shuffled = [...sourcePool].sort(() => Math.random() - 0.5)
+
+  const usedPlayerIds = new Set<number>()
+  const usedSnapshotIds: string[] = []
   const matchups: Comparison[] = []
-  const usedIndices = new Set<number>()
-  
-  // Find pairs with similar stats (within 5 points of combined stats)
-  for (let i = 0; i < playersWithTotal.length && matchups.length < count; i++) {
-    if (usedIndices.has(i)) continue
-    
-    // Find a similar player
-    for (let j = i + 1; j < playersWithTotal.length; j++) {
-      if (usedIndices.has(j)) continue
-      
-      const diff = Math.abs(playersWithTotal[i].total - playersWithTotal[j].total)
-      
-      // Match players within 5 combined stat points for close matchups
-      if (diff <= 5) {
-        matchups.push({
-          playerA: playersWithTotal[i].player,
-          playerB: playersWithTotal[j].player,
-        })
-        usedIndices.add(i)
-        usedIndices.add(j)
-        break
+
+  for (let i = 0; i < shuffled.length && matchups.length < roundCount; i++) {
+    const anchor = shuffled[i]
+    if (usedPlayerIds.has(anchor.playerId)) continue
+
+    let bestCandidate: EraSnapshot | null = null
+    let bestScore = Number.POSITIVE_INFINITY
+
+    for (let j = i + 1; j < shuffled.length; j++) {
+      const candidate = shuffled[j]
+      if (usedPlayerIds.has(candidate.playerId)) continue
+      if (!isValidPair(anchor, candidate)) continue
+
+      const score = pairScore(anchor, candidate)
+      if (score < bestScore) {
+        bestScore = score
+        bestCandidate = candidate
+      }
+    }
+
+    if (!bestCandidate) continue
+
+    matchups.push({ playerA: anchor, playerB: bestCandidate })
+    usedPlayerIds.add(anchor.playerId)
+    usedPlayerIds.add(bestCandidate.playerId)
+    usedSnapshotIds.push(anchor.id, bestCandidate.id)
+  }
+
+  if (matchups.length < roundCount) {
+    const topUpPool = [...allSnapshots].sort(() => Math.random() - 0.5)
+    for (let i = 0; i < topUpPool.length && matchups.length < roundCount; i++) {
+      const a = topUpPool[i]
+      if (usedPlayerIds.has(a.playerId)) continue
+
+      for (let j = i + 1; j < topUpPool.length && matchups.length < roundCount; j++) {
+        const b = topUpPool[j]
+        if (usedPlayerIds.has(b.playerId)) continue
+        if (!isValidPair(a, b)) continue
+
+        matchups.push({ playerA: a, playerB: b })
+        usedPlayerIds.add(a.playerId)
+        usedPlayerIds.add(b.playerId)
+        usedSnapshotIds.push(a.id, b.id)
       }
     }
   }
-  
-  // If we don't have enough close matchups, add random pairs
-  if (matchups.length < count) {
-    const remaining = playersWithTotal
-      .filter((_, i) => !usedIndices.has(i))
-      .sort(() => Math.random() - 0.5)
-    
-    for (let i = 0; i < remaining.length - 1 && matchups.length < count; i += 2) {
-      matchups.push({
-        playerA: remaining[i].player,
-        playerB: remaining[i + 1].player,
-      })
-    }
+
+  if (usedSnapshotIds.length > 0) {
+    setRecentSnapshotIds([...getRecentSnapshotIds(), ...usedSnapshotIds])
   }
-  
-  // Shuffle final matchups order
-  return matchups.sort(() => Math.random() - 0.5)
+
+  return matchups
 }
 
 export default function BlindComparisonPage() {
   const { soundEnabled } = useSettingsStore()
-  const { players: supabasePlayers, loading, error } = useStarPlayers(15)
-  
-  // Use Supabase players or fallback
+  const { players: supabasePlayers, loading, error } = useStarPlayers(20)
   const allPlayers = supabasePlayers.length >= 2 ? supabasePlayers : FALLBACK_STAR_PLAYERS
-  
+
   const [matchups, setMatchups] = useState<Comparison[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [selected, setSelected] = useState<'A' | 'B' | null>(null)
   const [revealed, setRevealed] = useState(false)
   const [score, setScore] = useState(0)
+  const [choicesMade, setChoicesMade] = useState(0)
+  const [choiceHistory, setChoiceHistory] = useState<Array<'A' | 'B'>>([])
   const [gameOver, setGameOver] = useState(false)
-  const [correctCount, setCorrectCount] = useState(0)
-  const [correctStreak, setCorrectStreak] = useState(0)
-  const [gameStartTime, setGameStartTime] = useState(0)
-  
-  const currentComparison = matchups[currentIndex]
-  const round = currentIndex + 1
+  const [gameStartTime, setGameStartTime] = useState<number>(Date.now())
+  const [avgDecisionTime, setAvgDecisionTime] = useState<number>(0)
 
-  // Save score when game ends
-  const saveScore = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const duration = Math.floor((Date.now() - gameStartTime) / 1000)
-        const isWin = score >= 300 // 3+ correct out of 5
-        await saveGameScore({
-          user_id: user.id,
-          game_type: 'blind-comparison',
-          score: score,
-          correct_answers: correctCount,
-          questions_answered: 5,
-          time_taken: duration
-        })
-        // Refresh session cache so profile/stats reflect new data
-        await useSessionDataStore.getState().refreshStats()
-      }
-    } catch (err) {
-      console.error('Error saving score:', err)
-    }
+  const currentComparison = useMemo(
+    () => matchups[currentIndex],
+    [currentIndex, matchups]
+  )
+
+  const initGame = () => {
+    const rounds = generateMatchups(allPlayers, 5)
+    setMatchups(rounds)
+    setCurrentIndex(0)
+    setSelected(null)
+    setRevealed(false)
+    setScore(0)
+    setChoicesMade(0)
+    setChoiceHistory([])
+    setGameOver(false)
+    setGameStartTime(Date.now())
   }
 
-  // Generate matchups when players load
   useEffect(() => {
     if (allPlayers.length >= 2) {
-      setMatchups(generateMatchups(allPlayers, 5))
-      setGameStartTime(Date.now())
+      initGame()
       if (soundEnabled) sounds.startGame()
     }
-  }, [allPlayers, soundEnabled])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allPlayers.length])
 
   useEffect(() => {
     if (soundEnabled && matchups.length > 0 && !gameOver) {
@@ -143,14 +264,9 @@ export default function BlindComparisonPage() {
     }
   }, [])
 
-  // Keyboard controls: Enter = submit selection when not revealed, next when revealed
   useKeyboardControls({
     onEnter: () => {
-      if (gameOver) return
-      if (revealed) {
-        nextRound()
-      }
-      // If not revealed and no selection, do nothing (Enter is for next only after selection)
+      if (!gameOver && revealed) nextRound()
     },
     onArrowLeft: () => {
       if (!revealed && !gameOver) handleSelect('A')
@@ -168,253 +284,238 @@ export default function BlindComparisonPage() {
   })
 
   const handleSelect = (choice: 'A' | 'B') => {
-    if (!currentComparison) return
-    
+    if (!currentComparison || revealed || gameOver) return
+
     setSelected(choice)
     setRevealed(true)
-    
-    // Higher combined stats wins (PPG + RPG + APG)
-    const aTotal = currentComparison.playerA.ppg + currentComparison.playerA.rpg + currentComparison.playerA.apg
-    const bTotal = currentComparison.playerB.ppg + currentComparison.playerB.rpg + currentComparison.playerB.apg
-    const winner = aTotal >= bTotal ? 'A' : 'B'
-    
-    if (choice === winner) {
-      setScore(prev => prev + 100)
-      setCorrectCount(prev => prev + 1)
-      const nextStreak = correctStreak + 1
-      setCorrectStreak(nextStreak)
-      if (soundEnabled) sounds.gameCorrect(nextStreak, currentIndex >= matchups.length - 1)
-    } else {
-      setCorrectStreak(0)
-      if (soundEnabled) sounds.gameWrong()
-    }
+    setScore((prev) => prev + 100)
+    setChoicesMade((prev) => prev + 1)
+    setChoiceHistory((prev) => [...prev, choice])
+
+    if (soundEnabled) sounds.click()
   }
 
-  const nextRound = () => {
+  const nextRound = async () => {
     if (currentIndex >= matchups.length - 1) {
+      const totalSeconds = Math.max(1, Math.round((Date.now() - gameStartTime) / 1000))
+      setAvgDecisionTime(Math.max(1, Math.round(totalSeconds / Math.max(1, choicesMade))))
       setGameOver(true)
-      saveScore()
-      sounds.stopGameMusicLoop()
+      await saveScore()
       if (soundEnabled) sounds.victory()
       return
     }
-    
-    setCurrentIndex(currentIndex + 1)
+
+    setCurrentIndex((prev) => prev + 1)
     setSelected(null)
     setRevealed(false)
     if (soundEnabled) sounds.click()
   }
 
-  const resetGame = () => {
-    setMatchups(generateMatchups(allPlayers, 5))
-    setCurrentIndex(0)
-    setSelected(null)
-    setRevealed(false)
-    setScore(0)
-    setGameOver(false)
-    setCorrectCount(0)
-    setCorrectStreak(0)
-    setGameStartTime(Date.now())
-    if (soundEnabled) sounds.startGame()
+  const saveScore = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      const duration = Math.max(1, Math.round((Date.now() - gameStartTime) / 1000))
+      await saveGameScore({
+        user_id: user.id,
+        game_type: 'blind-comparison',
+        score,
+        correct_answers: choicesMade,
+        questions_answered: 5,
+        time_taken: duration,
+      })
+      await useSessionDataStore.getState().refreshStats()
+    } catch (err) {
+      console.error('Error saving score:', err)
+    }
   }
 
-  // Loading state
-  if (loading && supabasePlayers.length === 0) {
+  const StatCard = ({ player, label, isRevealed }: { player: EraSnapshot; label: string; isRevealed: boolean }) => {
+    const showBoth = shouldShowBothRows(player)
+    const primaryLabel = player.apg >= player.rpg ? 'APG' : 'RPG'
+    const primaryValue = player.apg >= player.rpg ? player.apg : player.rpg
+
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <BasketballLoader size="lg" text="Loading players..." />
+      <motion.div
+        whileHover={!revealed ? { scale: 1.02 } : {}}
+        className={`card-neon p-6 cursor-pointer ${
+          selected === label
+            ? 'ring-2 ring-electric-lime'
+            : 'hover:border-electric-lime'
+        }`}
+        onClick={() => !revealed && handleSelect(label as 'A' | 'B')}
+      >
+        <div className="text-center mb-6">
+          <p className="text-3xl font-black text-electric-lime mb-2">PLAYER {label}</p>
+          {!isRevealed ? (
+            <img src={SILHOUETTE_URL} alt="Player silhouette" className="w-20 h-20 mx-auto opacity-60" />
+          ) : (
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+              <p className="font-bold text-lg text-electric-lime">{player.name}</p>
+              <p className="text-sm text-muted">{player.team} • {player.timeframe}</p>
+            </motion.div>
+          )}
+        </div>
+
+        <div className="space-y-3">
+          <div className="flex justify-between items-center py-2 border-b border-surface">
+            <span className="text-muted">PPG</span>
+            <span className="font-bold text-xl">{player.ppg.toFixed(1)}</span>
+          </div>
+
+          {showBoth ? (
+            <>
+              <div className="flex justify-between items-center py-2 border-b border-surface">
+                <span className="text-muted">APG</span>
+                <span className="font-bold text-xl">{player.apg.toFixed(1)}</span>
+              </div>
+              <div className="flex justify-between items-center py-2 border-b border-surface">
+                <span className="text-muted">RPG</span>
+                <span className="font-bold text-xl">{player.rpg.toFixed(1)}</span>
+              </div>
+            </>
+          ) : (
+            <div className="flex justify-between items-center py-2 border-b border-surface">
+              <span className="text-muted">{primaryLabel}</span>
+              <span className="font-bold text-xl">{primaryValue.toFixed(1)}</span>
+            </div>
+          )}
+
+          <div className="flex justify-between items-center py-2 border-b border-surface">
+            <span className="text-muted">3PT%</span>
+            <span className="font-bold text-xl">{player.threePtPct.toFixed(1)}%</span>
+          </div>
+          <div className="flex justify-between items-center py-2">
+            <span className="text-muted">FG%</span>
+            <span className="font-bold text-xl">{player.fgPct.toFixed(1)}%</span>
+          </div>
+        </div>
+      </motion.div>
+    )
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <BasketballLoader />
       </div>
     )
   }
 
-  if (!currentComparison) {
+  if (error && supabasePlayers.length < 2) {
+    console.warn('Using fallback players due to fetch error:', error)
+  }
+
+  if (!currentComparison && !gameOver) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <BasketballLoader size="md" text="Loading matchups..." />
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <BasketballLoader />
       </div>
     )
   }
-
-  const StatCard = ({ player, label, isRevealed }: { player: GamePlayer, label: string, isRevealed: boolean }) => (
-    <motion.button
-      whileHover={!revealed ? { scale: 1.02 } : {}}
-      whileTap={!revealed ? { scale: 0.98 } : {}}
-      onClick={() => !revealed && handleSelect(label as 'A' | 'B')}
-      disabled={revealed}
-      className={`flex-1 glass rounded-2xl p-6 transition-all ${
-        !revealed ? 'hover:border-electric-lime cursor-pointer' : ''
-      } ${
-        revealed && selected === label
-          ? 'border-2 border-electric-lime glow-lime'
-          : 'border border-surface'
-      }`}
-    >
-      {/* Player Image - Silhouette before reveal, actual image after */}
-      <div className="w-24 h-24 mx-auto mb-4 rounded-full overflow-hidden bg-gunmetal">
-        {isRevealed ? (
-          <motion.img
-            initial={{ opacity: 0, scale: 0.8 }}
-            animate={{ opacity: 1, scale: 1 }}
-            src={`https://cdn.nba.com/headshots/nba/latest/260x190/${player.id}.png`}
-            alt={player.name}
-            className="w-full h-full object-cover"
-            onError={(e) => {
-              (e.target as HTMLImageElement).src = SILHOUETTE_URL
-            }}
-          />
-        ) : (
-          <img
-            src={SILHOUETTE_URL}
-            alt="Mystery Player"
-            className="w-full h-full object-contain p-2 invert opacity-50"
-          />
-        )}
-      </div>
-
-      <div className="text-center mb-4">
-        <span className="text-3xl font-display font-bold">Player {label}</span>
-        <span className="text-sm text-muted ml-2">[{label === 'A' ? '1 or ←' : '2 or →'}]</span>
-        {isRevealed && (
-          <motion.div
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mt-2"
-          >
-            <p className="font-bold text-lg text-electric-lime">{player.name}</p>
-            <p className="text-sm text-muted">{player.team}</p>
-          </motion.div>
-        )}
-      </div>
-
-      <div className="space-y-3">
-        <div className="flex justify-between items-center py-2 border-b border-surface">
-          <span className="text-muted">PPG</span>
-          <span className="font-bold text-xl">{player.ppg.toFixed(1)}</span>
-        </div>
-        <div className="flex justify-between items-center py-2 border-b border-surface">
-          <span className="text-muted">RPG</span>
-          <span className="font-bold text-xl">{player.rpg.toFixed(1)}</span>
-        </div>
-        <div className="flex justify-between items-center py-2">
-          <span className="text-muted">APG</span>
-          <span className="font-bold text-xl">{player.apg.toFixed(1)}</span>
-        </div>
-      </div>
-    </motion.button>
-  )
 
   return (
-    <div className="min-h-screen px-4 py-6 md:px-8 lg:px-12">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <Link href="/play" className="text-muted hover:text-ghost-white transition-colors flex items-center gap-1">
-          <ArrowLeftIcon size={16} /> Back to Games
+    <div className="min-h-screen bg-background py-8">
+      <div className="max-w-6xl mx-auto px-4">
+        <Link href="/play" className="inline-flex items-center gap-2 text-muted hover:text-electric-lime transition-colors mb-6">
+          <ArrowLeftIcon /> Back to Games
         </Link>
-        <div className="flex items-center gap-4">
-          <span className="text-muted">Round {round}/{matchups.length}</span>
-          <span className="text-electric-lime font-bold">{score} pts</span>
-        </div>
-      </div>
 
-      {/* Data source indicator */}
-      {error && (
-        <div className="max-w-4xl mx-auto mb-4 text-center text-xs text-muted">
-          Using offline player data
-        </div>
-      )}
-
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-2xl md:text-3xl font-display font-bold text-center mb-2 flex items-center justify-center gap-2">
-          <CompareIcon size={28} className="text-hot-pink" /> Who Would You Rather Have?
-        </h1>
-        <p className="text-center text-muted mb-8">
-          Two stat lines. No names. Pick your player!
-        </p>
-
-        {!gameOver ? (
+        {!gameOver && (
           <>
-            {/* Comparison Cards */}
-            <div className="flex flex-col md:flex-row gap-4 mb-6">
-              <StatCard player={currentComparison.playerA} label="A" isRevealed={revealed} />
-              
-              <div className="flex items-center justify-center">
-                <span className="text-2xl font-bold text-muted">VS</span>
-              </div>
-              
-              <StatCard player={currentComparison.playerB} label="B" isRevealed={revealed} />
+            <div className="text-center mb-8">
+              <h1 className="text-4xl md:text-5xl font-black mb-2">
+                WOULD YOU <span className="text-electric-lime">RATHER HAVE</span>
+              </h1>
+              <p className="text-muted">If you are the GM would you rather have player A or player B</p>
+              <p className="text-sm text-muted mt-2">Round {currentIndex + 1} of 5</p>
             </div>
 
-            {/* Result / Next */}
-            <AnimatePresence>
-              {revealed && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="text-center"
-                >
-                  <p className="text-lg mb-4">
-                    You picked{' '}
-                    <span className="text-electric-lime font-bold">
-                      {selected === 'A' ? currentComparison.playerA.name : currentComparison.playerB.name}
-                    </span>
-                  </p>
-                  <button
-                    onClick={nextRound}
-                    className="px-8 py-3 bg-surface text-ghost-white font-bold rounded-xl hover:bg-muted/30 transition-colors flex items-center gap-2 mx-auto"
-                  >
-                    {currentIndex >= matchups.length - 1 ? 'See Results' : 'Next Comparison'}
-                    <ArrowRightIcon size={20} />
-                  </button>
-                </motion.div>
-              )}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={currentIndex}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                className="grid md:grid-cols-[1fr_auto_1fr] gap-6 items-center"
+              >
+                <StatCard player={currentComparison.playerA} label="A" isRevealed={revealed} />
+
+                <div className="text-center">
+                  <CompareIcon className="w-12 h-12 text-electric-lime mx-auto" />
+                </div>
+
+                <StatCard player={currentComparison.playerB} label="B" isRevealed={revealed} />
+              </motion.div>
             </AnimatePresence>
+
+            {revealed && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-8 text-center"
+              >
+                <p className="text-lg mb-4">
+                  You picked <span className="text-electric-lime font-bold">Player {selected}</span>
+                </p>
+                <button onClick={nextRound} className="btn-neon-primary inline-flex items-center gap-2">
+                  {currentIndex >= matchups.length - 1 ? 'Finish Game' : 'Next Round'} <ArrowRightIcon />
+                </button>
+              </motion.div>
+            )}
           </>
-        ) : (
-          /* Game Over Screen */
+        )}
+
+        {gameOver && (
           <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="glass rounded-2xl p-8 text-center"
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="glass rounded-2xl border border-surface/70 p-8 md:p-10 text-center max-w-4xl mx-auto"
           >
-            <h2 className="text-3xl font-display font-bold mb-4">Game Complete!</h2>
-            <p className="text-5xl font-display font-bold text-electric-lime mb-2">{score} points</p>
-            <p className="text-muted mb-6">{correctCount}/5 correct</p>
-            
-            {/* Stats Summary */}
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <div className="bg-surface rounded-xl p-4">
-                <p className="text-muted text-sm mb-1">Accuracy</p>
-                <p className="text-2xl font-bold text-electric-lime">
-                  {Math.round((correctCount / 5) * 100)}%
-                </p>
+            <h2 className="text-5xl font-black text-ghost-white mb-3">Game Complete!</h2>
+            <p className="text-muted text-xl mb-8">No wrong answer, just your preferred profile.</p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+              <div className="bg-gunmetal/80 rounded-2xl p-6 border border-surface">
+                <p className="text-muted text-2xl mb-2">Choices</p>
+                <p className="text-electric-lime text-5xl font-black">{choicesMade}/{matchups.length}</p>
               </div>
-              <div className="bg-surface rounded-xl p-4">
-                <p className="text-muted text-sm mb-1">Avg Time</p>
-                <p className="text-2xl font-bold">
-                  {gameStartTime > 0 ? Math.round((Date.now() - gameStartTime) / 1000 / 5) : 0}s
-                </p>
+              <div className="bg-gunmetal/80 rounded-2xl p-6 border border-surface">
+                <p className="text-muted text-2xl mb-2">Avg Time</p>
+                <p className="text-ghost-white text-5xl font-black">{avgDecisionTime}s</p>
               </div>
             </div>
 
-            <p className="text-muted mb-6">
-              {score >= 400 ? '🏆 You know your stars!' : 
-               score >= 300 ? '🌟 Great eye for talent!' :
-               '📚 Keep studying those stats!'}
-            </p>
-            <div className="flex gap-4 justify-center">
+            <p className="text-muted text-3xl mb-8">Ball Knower!</p>
+
+            <div className="flex flex-wrap justify-center gap-3">
               <button
-                onClick={resetGame}
-                className="px-6 py-3 bg-electric-lime text-deep-void font-bold rounded-xl"
+                onClick={initGame}
+                className="px-8 py-3 bg-electric-lime text-deep-void font-bold rounded-xl hover:bg-green-400 transition-colors"
               >
                 Play Again
               </button>
-              <Link
-                href="/play"
-                className="px-6 py-3 bg-surface text-ghost-white font-bold rounded-xl"
-              >
+              <Link href="/play" className="inline-block px-8 py-3 bg-surface text-ghost-white font-bold rounded-xl hover:bg-muted/30 transition-colors">
                 Back to Games
               </Link>
             </div>
+
+            {choiceHistory.length > 0 && (
+              <div className="mt-8 pt-6 border-t border-surface">
+                <p className="text-sm text-muted mb-2">Pick history</p>
+                <div className="flex flex-wrap justify-center gap-2">
+                  {choiceHistory.map((pick, i) => (
+                    <span
+                      key={`${pick}-${i}`}
+                      className="px-3 py-1 rounded-full bg-surface border border-surface text-sm"
+                    >
+                      R{i + 1}: {pick}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </motion.div>
         )}
       </div>

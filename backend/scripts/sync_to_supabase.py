@@ -357,13 +357,13 @@ def main():
         print("⚠️ Skipping sync this run due to temporary NBA API issue.")
         print("   Set FAIL_ON_FETCH_ERROR=true to force workflow failure on fetch errors.")
         print("\n" + "=" * 50)
-        print("✅ Sync skipped gracefully")
+        print("❌ Sync skipped (treated as failure for CI visibility)")
         print("=" * 50)
-        return
+        raise RuntimeError("NBA fetch failed; sync skipped")
     
     if not players:
         print("❌ No players fetched. Aborting.")
-        return
+        raise RuntimeError("No players fetched from NBA API")
     
     print(f"\n📊 Stats Summary:")
     print(f"   Total players: {len(players)}")
@@ -378,7 +378,9 @@ def main():
     
     # Step 2: Sync to Supabase
     print()
-    sync_to_supabase(players)
+    sync_ok = sync_to_supabase(players)
+    if not sync_ok:
+        raise RuntimeError("Failed to sync players to Supabase")
     
     print("\n" + "=" * 50)
     print("✅ Sync complete!")

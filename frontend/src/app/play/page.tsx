@@ -10,7 +10,7 @@ import {
   SearchIcon, 
   JourneyIcon, 
   CompareIcon, 
-  ChartIcon 
+  TrophyIcon 
 } from '@/components/icons'
 
 interface GameModeProps {
@@ -74,17 +74,17 @@ const gameModeDefinitions = [
   },
   {
     id: 'blind-comparison',
-    title: 'Blind Comparison',
-    description: 'Two stat lines, no names. Pick your choice, then reveal the players.',
+    title: 'Would You Rather Have',
+    description: 'Two stat lines, no names. Pick who you would rather have.',
     Icon: CompareIcon,
     difficulty: 'Hard',
     color: 'pink' as const,
   },
   {
-    id: 'stat-attack',
-    title: 'Stat Attack',
-    description: 'Given a stat, guess if the player is above or below the league average.',
-    Icon: ChartIcon,
+    id: 'resume-check',
+    title: 'Resume Check',
+    description: 'Guess the player from a randomized list of career accolades.',
+    Icon: TrophyIcon,
     difficulty: 'Medium',
     color: 'purple' as const,
   },
@@ -143,7 +143,7 @@ export default function PlayPage() {
     'whos-that': 0,
     'the-journey': 0,
     'blind-comparison': 0,
-    'stat-attack': 0,
+    'resume-check': 0,
   })
 
   // Fetch games played counts from database
@@ -163,7 +163,7 @@ export default function PlayPage() {
           'whos-that': 0,
           'the-journey': 0,
           'blind-comparison': 0,
-          'stat-attack': 0,
+          'resume-check': 0,
         }
         scores.forEach((score) => {
           const gameType = score.game_type
@@ -230,22 +230,6 @@ export default function PlayPage() {
           <GameModeCard key={mode.id} {...mode} />
         ))}
       </div>
-
-      {/* Coming Soon */}
-      <section className="mt-12">
-        <h2 className="text-xl font-display font-bold mb-4 text-muted">Coming Soon</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {['Team Builder', 'Season Simulator', 'Trade Machine'].map((title) => (
-            <div 
-              key={title}
-              className="glass rounded-xl p-4 opacity-50 cursor-not-allowed"
-            >
-              <p className="font-medium">{title}</p>
-              <p className="text-sm text-muted">Under development</p>
-            </div>
-          ))}
-        </div>
-      </section>
     </div>
   )
 }

@@ -56,7 +56,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     try {
       const { data: { session }, error } = await supabase.auth.getSession()
       if (error) throw error
-      
+
+      // Do not clear auth state on background refresh when session is temporarily unavailable.
+      // Explicit SIGNED_OUT events and manual sign-out should control logout behavior.
+      if (!session) {
+        console.warn('Session refresh returned no session; keeping current auth state')
+        set({ isLoading: false })
+        return
+      }
+
       set({
         session,
         user: session?.user || null,
@@ -66,7 +74,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       })
     } catch (error) {
       console.error('Error refreshing session:', error)
-      set({ user: null, session: null, isAuthenticated: false, sessionExpiresAt: null, isLoading: false })
+      // Keep existing auth/session on transient refresh failures to avoid interrupting active games.
+      set({ isLoading: false })
     }
   },
 

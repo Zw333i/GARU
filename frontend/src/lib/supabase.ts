@@ -237,7 +237,7 @@ export async function signOut() {
 export interface GameScore {
   id?: string
   user_id: string
-  game_type: 'whos-that' | 'blind-comparison' | 'the-journey' | 'stat-attack' | 'multiplayer-whos-that' | 'multiplayer-the-journey'
+  game_type: 'whos-that' | 'blind-comparison' | 'the-journey' | 'resume-check' | 'multiplayer-whos-that' | 'multiplayer-the-journey'
   score: number
   questions_answered?: number
   correct_answers?: number
@@ -278,7 +278,7 @@ export async function saveGameScore(score: Omit<GameScore, 'id' | 'created_at'>)
     }
     
     // Track role player guesses for guess-based games
-    if (['whos-that', 'the-journey', 'blind-comparison', 'stat-attack'].includes(score.game_type)) {
+    if (['whos-that', 'the-journey', 'blind-comparison', 'resume-check'].includes(score.game_type)) {
       if ((score.correct_answers || 0) > 0) {
         await updateAchievementProgress(score.user_id, 'role_player_expert', score.correct_answers || 0)
       }

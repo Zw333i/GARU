@@ -515,21 +515,24 @@ export default function ProfilePage() {
                 const gameNames: Record<string, string> = {
                   'whos-that': "Who's That?",
                   'the-journey': 'The Journey',
-                  'blind-comparison': 'Blind Comparison',
-                  'stat-attack': 'Stat Attack',
+                  'blind-comparison': 'Would You Rather Have',
+                  'resume-check': 'Resume Check',
                   'multiplayer-whos-that': "MP - Who's That?",
                   'multiplayer-the-journey': 'MP - The Journey',
                 }
                 const isMultiplayer = game.gameType.startsWith('multiplayer-')
+                const isPreferenceMode = game.gameType === 'blind-comparison'
                 const isWin = game.questionsAnswered > 0 && game.correctAnswers >= game.questionsAnswered / 2
                 const timeAgo = getTimeAgo(game.createdAt)
                 
                 return (
                   <div key={game.id} className="flex items-center gap-4 bg-gunmetal rounded-xl p-4">
                     <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                      isWin ? 'bg-electric-lime/20' : 'bg-hot-pink/20'
+                      isPreferenceMode ? 'bg-blue-500/20' : isWin ? 'bg-electric-lime/20' : 'bg-hot-pink/20'
                     }`}>
-                      {isWin ? (
+                      {isPreferenceMode ? (
+                        <ClockIcon size={20} className="text-blue-400" />
+                      ) : isWin ? (
                         <CheckIcon size={20} className="text-electric-lime" />
                       ) : (
                         <XIcon size={20} className="text-hot-pink" />
@@ -545,13 +548,19 @@ export default function ProfilePage() {
                         )}
                       </div>
                       <p className="text-xs text-muted">
-                        {game.correctAnswers}/{game.questionsAnswered} correct • {game.score} pts
+                        {isPreferenceMode
+                          ? `${game.questionsAnswered || 5} picks made • ${game.score} pts`
+                          : `${game.correctAnswers}/${game.questionsAnswered} correct • ${game.score} pts`}
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className={`font-bold text-sm ${isWin ? 'text-electric-lime' : 'text-hot-pink'}`}>
-                        {isWin ? 'W' : 'L'}
-                      </p>
+                      {isPreferenceMode ? (
+                        <p className="font-bold text-sm text-blue-400">PICK</p>
+                      ) : (
+                        <p className={`font-bold text-sm ${isWin ? 'text-electric-lime' : 'text-hot-pink'}`}>
+                          {isWin ? 'W' : 'L'}
+                        </p>
+                      )}
                       <p className="text-xs text-muted">{timeAgo}</p>
                     </div>
                   </div>

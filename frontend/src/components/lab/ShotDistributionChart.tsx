@@ -42,16 +42,19 @@ export function ShotDistributionChart({ selectedPlayer, refreshKey = 0 }: ShotDi
   const [usingRealData, setUsingRealData] = useState(false)
   const [seasonUsed, setSeasonUsed] = useState<string | null>(null)
   const [usedFallbackSeason, setUsedFallbackSeason] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
     if (!selectedPlayer) {
       setZones([])
+      setErrorMessage(null)
       return
     }
 
     let aborted = false
     const fetchDistribution = async () => {
       setIsLoading(true)
+      setErrorMessage(null)
       try {
         const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(/\/+$/, '')
         const forceRefresh = refreshKey > 0
@@ -83,7 +86,7 @@ export function ShotDistributionChart({ selectedPlayer, refreshKey = 0 }: ShotDi
           setSeasonUsed(data.season_used || null)
           setUsedFallbackSeason(!!data.season_fallback_used)
           const hasData = data.zones.some((z: ZoneData) => z.attempts > 0)
-          if (hasData) {
+          if (hasData && data.using_real_data) {
             const zonesWithColors = data.zones.map((z: Omit<ZoneData, 'color'>) => ({
               ...z,
               color: ZONE_COLORS[z.zone] || '#6B7280',
@@ -92,12 +95,14 @@ export function ShotDistributionChart({ selectedPlayer, refreshKey = 0 }: ShotDi
           } else {
             setZones([])
             setUsingRealData(false)
+            setErrorMessage("Error 69: Can't fetch real shot distribution data for this player.")
           }
         } else {
           if (!aborted) {
             setZones([])
             setSeasonUsed(null)
             setUsedFallbackSeason(false)
+            setErrorMessage("Error 69: Can't fetch real shot distribution data right now.")
           }
         }
       } catch (err: unknown) {
@@ -108,6 +113,7 @@ export function ShotDistributionChart({ selectedPlayer, refreshKey = 0 }: ShotDi
           setZones([])
           setSeasonUsed(null)
           setUsedFallbackSeason(false)
+          setErrorMessage("Error 69: Can't fetch real shot distribution data right now.")
         }
       } finally {
         if (!aborted) setIsLoading(false)
@@ -180,8 +186,9 @@ export function ShotDistributionChart({ selectedPlayer, refreshKey = 0 }: ShotDi
 
       {zones.length === 0 && (
         <div className="h-40 flex items-center justify-center text-muted text-sm flex-col gap-2">
-          <p>No shot distribution data available for {selectedPlayer.name}</p>
-          <p className="text-xs text-muted/60">This player may not have recent shot attempts available yet.</p>
+          <p className="text-red-300 font-semibold">Error 69</p>
+          <p>Can&apos;t fetch real shot distribution data for {selectedPlayer.name}</p>
+          <p className="text-xs text-muted/60">Real data only mode is enabled (no synthetic data shown)</p>
         </div>
       )}
 
@@ -244,6 +251,12 @@ export function ShotDistributionChart({ selectedPlayer, refreshKey = 0 }: ShotDi
               </p>
             </div>
           </div>
+        </div>
+      )}
+
+      {errorMessage && (
+        <div className="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+          {errorMessage}
         </div>
       )}
     </motion.div>

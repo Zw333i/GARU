@@ -29,10 +29,54 @@ jobs:
           NBA_API_TIMEOUT: "120"
           NBA_API_MAX_RETRIES: "5"
           NBA_API_RETRY_BASE_DELAY: "2"
-          FAIL_ON_FETCH_ERROR: "false"
+          FAIL_ON_FETCH_ERROR: "true"
         run: |
           cd backend
           python scripts/sync_to_supabase.py
+
+      - name: Verify database freshness
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          python - <<'PY'
+          import os
+          from datetime import datetime, timezone, timedelta
+          from supabase import create_client
+
+          url = os.environ.get("SUPABASE_URL")
+          key = os.environ.get("SUPABASE_KEY")
+          if not url or not key:
+              raise RuntimeError("Missing Supabase credentials for verification step")
+
+          sb = create_client(url, key)
+          result = (
+              sb.table("cached_players")
+                .select("updated_at")
+                .order("updated_at", desc=True)
+                .limit(1)
+                .execute()
+          )
+
+          if not result.data:
+              raise RuntimeError("Verification failed: cached_players is empty")
+
+          raw_ts = result.data[0].get("updated_at")
+          if not raw_ts:
+              raise RuntimeError("Verification failed: latest row missing updated_at")
+
+          latest = datetime.fromisoformat(str(raw_ts).replace("Z", "+00:00"))
+          now = datetime.now(timezone.utc)
+          age = now - latest
+          print(f"Latest cached_players updated_at: {latest.isoformat()} (age: {age})")
+
+          if age > timedelta(hours=30):
+              raise RuntimeError(
+                  f"Verification failed: cached_players is stale (>{30}h). Latest={latest.isoformat()}"
+              )
+
+          print("Verification passed: cached_players was updated recently")
+          PY
 
       - name: Upload data artifact (if local JSON generated)
         uses: actions/upload-artifact@v4

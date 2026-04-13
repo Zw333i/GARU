@@ -84,7 +84,7 @@ export const ACHIEVEMENTS: Record<string, Omit<Achievement, 'unlockedAt' | 'prog
   COMPARISON_KING: {
     id: 'COMPARISON_KING',
     name: 'Comparison King',
-    description: 'Win 20 Blind Comparison rounds',
+    description: 'Complete 20 Would You Rather Have rounds',
     icon: 'compare',
     xp: 150,
     maxProgress: 20,

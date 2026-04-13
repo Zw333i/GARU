@@ -100,22 +100,25 @@ export function HexShotChart({ selectedPlayer, refreshKey = 0 }: HexShotChartPro
   const [isLoading, setIsLoading] = useState(false)
   const [usingRealData, setUsingRealData] = useState(false)
   const [apiStats, setApiStats] = useState<{ fgPct: number; threePct: number; paintPct: number; total: number } | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
     if (!selectedPlayer) {
       setZones([])
       setApiStats(null)
       setUsingRealData(false)
+      setErrorMessage(null)
       return
     }
 
     let aborted = false
     const fetchZones = async () => {
       setIsLoading(true)
+      setErrorMessage(null)
       try {
         const forceRefresh = refreshKey > 0
         const url = forceRefresh
-          ? `${API_URL}/api/stats/shot-zones/${selectedPlayer.id}?t=${Date.now()}`
+          ? `${API_URL}/api/stats/shot-zones/${selectedPlayer.id}?refresh=true&t=${Date.now()}`
           : `${API_URL}/api/stats/shot-zones/${selectedPlayer.id}`
 
         const controller = new AbortController()
@@ -150,11 +153,23 @@ export function HexShotChart({ selectedPlayer, refreshKey = 0 }: HexShotChartPro
               })
             }
           }
+          if (!data.using_real_data || mappedZones.length === 0) {
+            if (!aborted) {
+              setZones([])
+              setUsingRealData(false)
+              setApiStats(null)
+              setErrorMessage("Error 69: Can't fetch real shot chart data for this player.")
+            }
+            return
+          }
+
           if (!aborted) setZones(mappedZones)
         } else {
           if (!aborted) {
             setZones([])
             setUsingRealData(false)
+            setApiStats(null)
+            setErrorMessage("Error 69: Can't fetch real shot chart data right now.")
           }
         }
       } catch (err: unknown) {
@@ -164,6 +179,8 @@ export function HexShotChart({ selectedPlayer, refreshKey = 0 }: HexShotChartPro
         if (!aborted) {
           setZones([])
           setUsingRealData(false)
+          setApiStats(null)
+          setErrorMessage("Error 69: Can't fetch real shot chart data right now.")
         }
       } finally {
         if (!aborted) setIsLoading(false)
@@ -333,17 +350,17 @@ export function HexShotChart({ selectedPlayer, refreshKey = 0 }: HexShotChartPro
             </g>
           )}
 
-          {/* No data state - player selected but no shots in DB */}
+          {/* No data state - player selected but no real data available */}
           {selectedPlayer && !isLoading && zones.length === 0 && (
             <g>
-              <text x="0" y="150" textAnchor="middle" fill="#64748b" fontSize="15" fontFamily="sans-serif">
-                No shot chart data available
+              <text x="0" y="150" textAnchor="middle" fill="#F87171" fontSize="15" fontFamily="sans-serif">
+                Error 69
               </text>
-              <text x="0" y="172" textAnchor="middle" fill="#475569" fontSize="11" fontFamily="sans-serif">
-                for {selectedPlayer.name}
+              <text x="0" y="172" textAnchor="middle" fill="#64748b" fontSize="11" fontFamily="sans-serif">
+                Can't fetch real shot chart data for {selectedPlayer.name}
               </text>
-              <text x="0" y="196" textAnchor="middle" fill="#374151" fontSize="10" fontFamily="sans-serif">
-                Run the sync script to populate the database
+              <text x="0" y="196" textAnchor="middle" fill="#475569" fontSize="10" fontFamily="sans-serif">
+                Real data only mode is enabled (no synthetic data shown)
               </text>
             </g>
           )}
@@ -403,7 +420,7 @@ export function HexShotChart({ selectedPlayer, refreshKey = 0 }: HexShotChartPro
       </div>
 
       {/* Legend */}
-      {selectedPlayer && (
+      {selectedPlayer && zones.length > 0 && (
         <div className="mt-4 space-y-3">
           {/* Efficiency Legend - Red to Green scale */}
           <div className="flex items-center justify-center gap-1 flex-wrap">
@@ -447,6 +464,12 @@ export function HexShotChart({ selectedPlayer, refreshKey = 0 }: HexShotChartPro
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {errorMessage && (
+        <div className="mt-4 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-300">
+          {errorMessage}
         </div>
       )}
     </motion.div>
