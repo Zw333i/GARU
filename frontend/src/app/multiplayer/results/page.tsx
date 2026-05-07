@@ -330,6 +330,21 @@ function ResultsContent() {
     )
   }
 
+  if (room.status !== 'finished') {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="glass rounded-2xl p-8 text-center max-w-xl">
+          <h2 className="text-3xl font-display font-bold mb-3">Waiting for others...</h2>
+          <p className="text-muted mb-6">Results update in real time once everyone finishes.</p>
+          <div className="flex items-center justify-center gap-2 text-sm text-muted">
+            <span className="w-2 h-2 rounded-full bg-electric-lime animate-pulse" />
+            <span>Live room sync active</span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const sortedPlayers = [...(room.players || [])].sort((a, b) => b.score - a.score)
   const winner = sortedPlayers[0]
   const isTie = sortedPlayers.length >= 2 && sortedPlayers[0]?.score === sortedPlayers[1]?.score

@@ -267,6 +267,26 @@ class SoundManager {
     const effect = this.pickRandom(this.wrongPool)
     this.playFile(effect, () => this.wrong())
   }
+
+  // Preload all sound files for instant playback (non-blocking)
+  async preloadSounds(): Promise<void> {
+    if (typeof window === 'undefined') return
+    
+    const soundKeys = Object.keys(this.soundFiles) as Array<keyof SoundManager['soundFiles']>
+    // Start preloading in background without blocking
+    soundKeys.forEach(key => {
+      const audio = new Audio(this.soundFiles[key])
+      audio.preload = 'auto'
+      audio.volume = 0
+      // Attempt to play and pause silently to trigger full cache
+      audio.play().catch(() => {
+        // Ignore autoplay errors
+      }).finally(() => {
+        audio.pause()
+        audio.currentTime = 0
+      })
+    })
+  }
 }
 
 // Export both the class and a singleton instance

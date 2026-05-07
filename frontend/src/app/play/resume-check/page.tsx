@@ -293,7 +293,9 @@ export default function ResumeCheckPage() {
 
       <div className="max-w-3xl mx-auto">
         <h1 className="text-3xl font-display font-bold text-center mb-2 flex items-center justify-center gap-2">
-          <TrophyIcon size={28} className="text-purple-400" /> Resume Check
+          <TrophyIcon size={28} className="text-purple-400" />
+          <span>Resume </span>
+          <span className="text-electric-lime">Check</span>
         </h1>
         <p className="text-center text-muted mb-6">Guess the player from their accolades.</p>
 
@@ -302,17 +304,19 @@ export default function ResumeCheckPage() {
         </div>
 
         {!gameOver ? (
-          <div className="glass rounded-2xl p-6">
-            <h2 className="text-lg font-bold mb-4">Player Resume</h2>
-            <ul className="space-y-2 mb-6">
+          <div className="card-neon p-8 rounded-2xl">
+            <div className="text-center mb-6">
+              <img src="/placeholder-player.svg" alt="Player" className="w-20 h-20 mx-auto opacity-60" />
+            </div>
+            <div className="space-y-3 mb-6 max-h-56 overflow-y-auto">
               {current.accolades.map((item, idx) => (
-                <li key={item} className="bg-gunmetal rounded-lg px-4 py-2 text-sm flex items-center gap-2">
+                <div key={item} className="flex items-center gap-3 py-2 px-3 border-b border-surface/30">
                   <AccoladeIcon text={item} />
                   <span className="text-electric-lime/80 text-xs font-semibold">{idx + 1}.</span>
                   <span>{item}</span>
-                </li>
+                </div>
               ))}
-            </ul>
+            </div>
 
             {!revealed ? (
               <div className="space-y-3">

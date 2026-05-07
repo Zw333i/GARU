@@ -12,8 +12,7 @@ import { saveGameScore, supabase } from '@/lib/supabase'
 import { useSettingsStore } from '@/store/settingsStore'
 import { useSessionDataStore } from '@/store/sessionDataStore'
 
-const SILHOUETTE_URL =
-  'https://th.bing.com/th/id/R.2855dc2b9d9f849e227dbe9f73642b27?rik=%2bcUVqCXHhW1S%2bA&riu=http%3a%2f%2fgetdrawings.com%2fimg%2fmale-silhouette-head-31.png&ehk=yxlY0knr%2bEmdM%2baGFVqzo0zaLgigbwObIl%2bXINZzWJ0%3d&risl=&pid=ImgRaw&r=0'
+const PLACEHOLDER_PLAYER_SVG = '/placeholder-player.svg'
 
 interface EraSnapshot {
   id: string
@@ -240,6 +239,14 @@ export default function BlindComparisonPage() {
     setChoiceHistory([])
     setGameOver(false)
     setGameStartTime(Date.now())
+    
+    // Preload all matchup player images upfront
+    rounds.forEach(matchup => {
+      [matchup.playerA, matchup.playerB].forEach(player => {
+        const img = new Image()
+        img.src = `https://cdn.nba.com/headshots/nba/latest/260x190/${player.playerId}.png`
+      })
+    })
   }
 
   useEffect(() => {
@@ -349,11 +356,21 @@ export default function BlindComparisonPage() {
         <div className="text-center mb-6">
           <p className="text-3xl font-black text-electric-lime mb-2">PLAYER {label}</p>
           {!isRevealed ? (
-            <img src={SILHOUETTE_URL} alt="Player silhouette" className="w-20 h-20 mx-auto opacity-60" />
+            <img src={PLACEHOLDER_PLAYER_SVG} alt="Player silhouette" className="w-20 h-20 mx-auto opacity-60" />
           ) : (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-              <p className="font-bold text-lg text-electric-lime">{player.name}</p>
-              <p className="text-sm text-muted">{player.team} • {player.timeframe}</p>
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-2">
+              <img 
+                src={`https://cdn.nba.com/headshots/nba/latest/260x190/${player.playerId}.png`}
+                alt={player.name}
+                className="w-20 h-20 rounded-lg object-cover"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).src = PLACEHOLDER_PLAYER_SVG
+                }}
+              />
+              <div>
+                <p className="font-bold text-lg text-electric-lime">{player.name}</p>
+                <p className="text-sm text-muted">{player.team} • {player.timeframe}</p>
+              </div>
             </motion.div>
           )}
         </div>

@@ -27,6 +27,7 @@ interface PlayerData {
   id: string
   score: number
   answers: { questionId: number; answer: string; correct: boolean; timeTaken: number }[]
+  finished?: boolean
 }
 
 interface Room {
@@ -81,8 +82,6 @@ function GameContent() {
 
   // Ref for auto-advance timer so Enter key can cancel it
   const autoAdvanceTimerRef = React.useRef<number | null>(null)
-  const currentQRef = React.useRef(0)
-  currentQRef.current = currentQ
   const warningPlayedRef = React.useRef(false)
 
   // Global keyboard handler for Enter key
@@ -92,7 +91,6 @@ function GameContent() {
 
       // If showing result, advance to next question immediately
       if (showResult && room) {
-        if (user?.id !== room.host_id) return
         e.preventDefault()
         // Cancel auto-advance timer
         if (autoAdvanceTimerRef.current) {
@@ -124,7 +122,7 @@ function GameContent() {
 
       if (data) {
         setRoom(data as Room)
-        setCurrentQ(data.current_question || 0)
+        setCurrentQ(0)
         setTimeLeft(data.timer_duration)
         setQuestionStartTime(Date.now())
         setLoading(false)
@@ -174,22 +172,6 @@ function GameContent() {
           const newRoom = payload.new as Room
           setRoom(newRoom)
 
-          if (
-            typeof newRoom.current_question === 'number' &&
-            newRoom.current_question !== currentQRef.current
-          ) {
-            setCurrentQ(newRoom.current_question)
-            setGuess('')
-            setAnswered(false)
-            answeredRef.current = false
-            setIsCorrect(null)
-            setTimedOut(false)
-            setShowResult(false)
-            setTimeLeft(newRoom.timer_duration)
-            setQuestionStartTime(Date.now())
-            warningPlayedRef.current = false
-          }
-          
           if (newRoom.status === 'finished') {
             router.push(`/multiplayer/results?code=${roomCode}`)
           }
@@ -225,6 +207,19 @@ function GameContent() {
 
     return () => clearInterval(interval)
   }, [roomCode, room?.id, router, connected])
+
+  // Preload multiple upcoming questions' images for instant display
+  useEffect(() => {
+    if (room && room.game_type === 'who-that') {
+      // Preload all questions' images
+      room.questions.forEach(q => {
+        if (q?.playerId) {
+          const img = new Image()
+          img.src = `https://cdn.nba.com/headshots/nba/latest/1040x760/${q.playerId}.png`
+        }
+      })
+    }
+  }, [room?.id])
 
   // Timer countdown
   useEffect(() => {
@@ -348,19 +343,17 @@ function GameContent() {
     }
 
     // Set up for manual advance via Enter key (auto-advance after 5s as fallback)
-    if (user.id === room.host_id) {
-      autoAdvanceTimerRef.current = window.setTimeout(() => {
-        if (currentQ < room.questions.length - 1) {
-          nextQuestion()
-        } else {
-          finishGame()
-        }
-      }, 5000)
-    }
+    autoAdvanceTimerRef.current = window.setTimeout(() => {
+      if (currentQ < room.questions.length - 1) {
+        nextQuestion()
+      } else {
+        finishGame()
+      }
+    }, 5000)
   }
 
   const nextQuestion = async () => {
-    if (!room || user?.id !== room.host_id) return
+    if (!room) return
 
     const nextQ = currentQ + 1
     setCurrentQ(nextQ)
@@ -373,10 +366,6 @@ function GameContent() {
     setQuestionStartTime(Date.now())
     warningPlayedRef.current = false
 
-    await supabase
-      .from('multiplayer_rooms')
-      .update({ current_question: nextQ })
-      .eq('id', room.id)
   }
 
   const finishGame = async () => {
@@ -384,11 +373,28 @@ function GameContent() {
 
     sounds.stopGameMusicLoop()
 
-    // Mark game as finished (host only)
-    if (user.id === room.host_id) {
+    // Update this player's finished flag, and complete the room when all players are done.
+    const { data: freshRoom } = await supabase
+      .from('multiplayer_rooms')
+      .select('players')
+      .eq('id', room.id)
+      .single()
+
+    if (freshRoom?.players) {
+      const updatedPlayers = (freshRoom.players as PlayerData[]).map((p) =>
+        p.id === user.id ? { ...p, finished: true } : p
+      )
+
+      const allFinished = updatedPlayers.every((p) =>
+        (p.answers?.length || 0) >= room.questions.length || p.finished
+      )
+
       await supabase
         .from('multiplayer_rooms')
-        .update({ status: 'finished' })
+        .update({
+          players: updatedPlayers,
+          status: allFinished ? 'finished' : room.status,
+        })
         .eq('id', room.id)
     }
 
@@ -444,13 +450,14 @@ function GameContent() {
           key={currentQ}
           initial={{ opacity: 0, x: 50 }}
           animate={{ opacity: 1, x: 0 }}
-          className="glass rounded-2xl p-6 mb-6"
+          className="card-neon rounded-2xl p-8 mb-6"
         >
           {isJourney ? (
             // The Journey - Show team logos
             <div>
               <h2 className="text-lg font-bold text-center mb-6">
-                Guess the player from their career path
+                <span>THE </span>
+                <span className="text-electric-lime">JOURNEY</span>
               </h2>
               <div className="flex items-center justify-center gap-2 flex-wrap">
                 {question.teams?.map((team, i) => (
@@ -559,7 +566,7 @@ function GameContent() {
                 </p>
               )}
               <p className="text-xs text-muted mt-3 animate-pulse">
-                {user?.id === room.host_id ? 'Press Enter to continue' : 'Waiting for host...'}
+                Press Enter to continue
               </p>
             </motion.div>
           )}

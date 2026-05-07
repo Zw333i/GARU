@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { sounds } from '@/lib/sounds'
@@ -64,6 +64,22 @@ export default function JourneyPage() {
       }
     }
   }, [players, currentPlayer, getRandomPlayer])
+
+  // Preload multiple upcoming player team images upfront to avoid waiting
+  useEffect(() => {
+    if (players.length > 0 && currentPlayer) {
+      // Preload all player team logos
+      players.forEach(player => {
+        if (player.teams && player.teams.length > 0) {
+          player.teams.forEach(team => {
+            // Trigger logo load by creating an image
+            const img = new Image()
+            img.src = `/assets/logos/${team.toLowerCase()}.png`
+          })
+        }
+      })
+    }
+  }, [players])
 
   // Save score when game ends
   const saveScore = async () => {
@@ -233,7 +249,8 @@ export default function JourneyPage() {
       <div className="max-w-2xl mx-auto">
         <h1 className="text-2xl md:text-3xl font-display font-bold text-center mb-2 flex items-center justify-center gap-3">
           <JourneyIcon className="text-blue-400" size={32} />
-          The Journey
+          <span>THE</span>
+          <span className="text-electric-lime">JOURNEY</span>
         </h1>
         <p className="text-center text-muted mb-2">
           Guess which player took this career path
@@ -243,9 +260,9 @@ export default function JourneyPage() {
         </p>
 
         {!gameOver ? (
-          <motion.div className="glass rounded-2xl p-6 md:p-8">
+          <motion.div className="card-neon rounded-2xl p-8 md:p-10">
             {/* Team Path with SVG Logos */}
-            <div className="flex items-center justify-center gap-1 md:gap-2 flex-wrap mb-6">
+            <div className="flex items-center justify-center gap-1 md:gap-2 flex-wrap mb-8">
               {currentPlayer.teams.map((team, i) => (
                 <motion.div
                   key={i}

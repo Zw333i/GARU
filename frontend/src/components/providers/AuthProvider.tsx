@@ -7,6 +7,7 @@ import { useAuthStore } from '@/store/authStore'
 import { usePlayersStore } from '@/store/playersStore'
 import { useSessionDataStore } from '@/store/sessionDataStore'
 import { prefetchLabForPlayer } from '@/lib/labPrefetch'
+import { sounds } from '@/lib/sounds'
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const setUser = useUserStore((state) => state.setUser)
@@ -41,6 +42,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     // Pre-fetch players data on app load (session-cached)
     fetchPlayers()
+    
+    // Preload all sounds for instant playback across games
+    sounds.preloadSounds().catch(() => {
+      // Preload errors are non-critical
+    })
     
     // Check initial session
     const checkSession = async () => {

@@ -8,6 +8,7 @@ import { useSettingsStore } from '@/store/settingsStore'
 import { useKeyboardControls } from '@/hooks/useKeyboardControls'
 import { useRolePlayers, FALLBACK_ROLE_PLAYERS, GamePlayer } from '@/hooks/useGamePlayers'
 import { supabase, saveGameScore, incrementRolePlayerGuesses } from '@/lib/supabase'
+import { PlayerImage } from '@/components/ui/PlayerImage'
 import { SearchIcon, CheckIcon, XIcon, ArrowRightIcon, ArrowLeftIcon } from '@/components/icons'
 import { BasketballLoader } from '@/components/ui/BasketballLoader'
 import { useSessionDataStore } from '@/store/sessionDataStore'
@@ -72,6 +73,17 @@ export default function WhosThatPage() {
     `Averages ${currentPlayer.ppg.toFixed(1)} PPG`,
     `Position: ${currentPlayer.position}`,
   ] : []
+
+  // Aggressively preload multiple upcoming player images for zero-wait experience
+  useEffect(() => {
+    if (gameStarted && allPlayers.length > 0 && !gameOver) {
+      // Preload all player images immediately
+      allPlayers.forEach(player => {
+        const img = new Image()
+        img.src = `https://cdn.nba.com/headshots/nba/latest/260x190/${player.id}.png`
+      })
+    }
+  }, [gameStarted, allPlayers])
 
   // Clear timer on unmount
   useEffect(() => {
@@ -153,6 +165,12 @@ export default function WhosThatPage() {
     setCorrectStreak(0)
     if (soundEnabled) sounds.startGame()
     setTimeout(() => inputRef.current?.focus(), 100)
+    
+      // Preload all player images for zero-wait
+      allPlayers.forEach(p => {
+        const img = new Image()
+        img.src = `https://cdn.nba.com/headshots/nba/latest/260x190/${p.id}.png`
+      })
   }
 
   // Keyboard controls: Enter = submit first, then next
@@ -423,23 +441,22 @@ export default function WhosThatPage() {
           <>
             <h1 className="text-2xl md:text-3xl font-display font-bold text-center mb-8 flex items-center justify-center gap-3">
               <SearchIcon className="text-electric-lime" size={32} />
-              Who&apos;s That Player?
+              <span>Who&apos;s That </span>
+              <span className="text-electric-lime">Player?</span>
             </h1>
 
             {/* Game Card */}
-        <motion.div layout className="glass rounded-2xl p-6 md:p-8">
+        <motion.div layout className="card-neon p-8 md:p-10 rounded-2xl">
           {/* Player Image */}
-          <div className="relative w-48 h-48 mx-auto mb-6">
+          <div className="relative w-40 h-40 mx-auto mb-8">
             <div className="w-full h-full rounded-2xl bg-gunmetal overflow-hidden border-4 border-surface">
-              <img
-                key={`${currentPlayer.id}-${round}`}
-                src={`https://cdn.nba.com/headshots/nba/latest/260x190/${currentPlayer.id}.png?v=${round}`}
-                alt="Mystery Player"
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = `https://ak-static.cms.nba.com/wp-content/uploads/headshots/nba/latest/260x190/${currentPlayer.id}.png?v=${round}`
-                }}
-              />
+                <PlayerImage
+                  playerId={currentPlayer.id}
+                  playerName={currentPlayer.name}
+                  size="xl"
+                  animate={false}
+                  className="w-full h-full"
+                />
             </div>
           </div>
 
