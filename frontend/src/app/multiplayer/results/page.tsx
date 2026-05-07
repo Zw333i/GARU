@@ -80,6 +80,7 @@ function ResultsContent() {
   const [statsSaved, setStatsSaved] = useState(false)
   const [playAgainVotes, setPlayAgainVotes] = useState<string[]>([])
   const [hasVoted, setHasVoted] = useState(false)
+  const [connected, setConnected] = useState(false)
   const redirectingRef = useRef(false)
 
   const fetchRoom = useCallback(async () => {
@@ -188,6 +189,26 @@ function ResultsContent() {
     fetchRoom()
   }, [fetchRoom])
 
+  useEffect(() => {
+    const handleReconnect = () => {
+      if (document.visibilityState === 'visible') {
+        fetchRoom()
+      }
+    }
+
+    const handleOnline = () => {
+      fetchRoom()
+    }
+
+    document.addEventListener('visibilitychange', handleReconnect)
+    window.addEventListener('online', handleOnline)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleReconnect)
+      window.removeEventListener('online', handleOnline)
+    }
+  }, [fetchRoom])
+
   // Real-time subscription for play again votes
   useEffect(() => {
     if (!roomCode) return
@@ -204,6 +225,8 @@ function ResultsContent() {
         },
         (payload) => {
           const updatedRoom = payload.new as Room
+
+          setRoom(updatedRoom)
           
           // Track play again votes
           if (updatedRoom.play_again_votes) {
@@ -217,37 +240,18 @@ function ResultsContent() {
           }
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        const isConnected = status === 'SUBSCRIBED'
+        setConnected(isConnected)
+        if (isConnected) {
+          fetchRoom()
+        }
+      })
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [roomCode, router])
-
-  // Polling fallback for play again votes
-  useEffect(() => {
-    if (!roomCode || !room) return
-
-    const interval = setInterval(async () => {
-      const { data } = await supabase
-        .from('multiplayer_rooms')
-        .select('play_again_votes, status')
-        .eq('code', roomCode)
-        .single()
-
-      if (data) {
-        if (data.play_again_votes) {
-          setPlayAgainVotes(data.play_again_votes)
-        }
-        if (data.status === 'waiting' && !redirectingRef.current) {
-          redirectingRef.current = true
-          router.push(`/multiplayer/lobby?code=${roomCode}`)
-        }
-      }
-    }, 3000)
-
-    return () => clearInterval(interval)
-  }, [roomCode, room?.id, router])
+  }, [roomCode, router, fetchRoom])
 
   // Check if all players have voted to play again → reset room
   useEffect(() => {
@@ -333,14 +337,7 @@ function ResultsContent() {
   if (room.status !== 'finished') {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="glass rounded-2xl p-8 text-center max-w-xl">
-          <h2 className="text-3xl font-display font-bold mb-3">Waiting for others...</h2>
-          <p className="text-muted mb-6">Results update in real time once everyone finishes.</p>
-          <div className="flex items-center justify-center gap-2 text-sm text-muted">
-            <span className="w-2 h-2 rounded-full bg-electric-lime animate-pulse" />
-            <span>Live room sync active</span>
-          </div>
-        </div>
+        <BasketballLoader size="lg" text="Waiting for others..." />
       </div>
     )
   }
@@ -382,6 +379,9 @@ function ResultsContent() {
           <p className="text-muted">
             {room.game_type === 'the-journey' ? 'The Journey' : "Who's That Role Player"}
           </p>
+          {!connected && (
+            <p className="text-xs text-muted mt-2">Reconnecting...</p>
+          )}
         </motion.div>
 
         {/* Score Cards */}

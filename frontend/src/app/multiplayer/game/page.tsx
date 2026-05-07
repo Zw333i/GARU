@@ -147,6 +147,26 @@ function GameContent() {
   }, [fetchRoom])
 
   useEffect(() => {
+    const handleReconnect = () => {
+      if (document.visibilityState === 'visible') {
+        fetchRoom()
+      }
+    }
+
+    const handleOnline = () => {
+      fetchRoom()
+    }
+
+    document.addEventListener('visibilitychange', handleReconnect)
+    window.addEventListener('online', handleOnline)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleReconnect)
+      window.removeEventListener('online', handleOnline)
+    }
+  }, [fetchRoom])
+
+  useEffect(() => {
     if (!soundEnabled || !room || room.status !== 'playing') return
     sounds.startGameMusicLoop()
     return () => {
@@ -178,35 +198,17 @@ function GameContent() {
         }
       )
       .subscribe((status) => {
-        setConnected(status === 'SUBSCRIBED')
+        const isConnected = status === 'SUBSCRIBED'
+        setConnected(isConnected)
+        if (isConnected) {
+          fetchRoom()
+        }
       })
 
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [roomCode, router])
-
-  // Polling fallback for game status changes
-  useEffect(() => {
-    if (!roomCode || !room) return
-
-    const interval = setInterval(async () => {
-      const { data } = await supabase
-        .from('multiplayer_rooms')
-        .select('status, players')
-        .eq('code', roomCode)
-        .single()
-
-      if (data?.status === 'finished') {
-        router.push(`/multiplayer/results?code=${roomCode}`)
-      }
-      if (data?.players) {
-        setRoom(prev => prev ? { ...prev, players: data.players } : prev)
-      }
-    }, connected ? 5000 : 1000)
-
-    return () => clearInterval(interval)
-  }, [roomCode, room?.id, router, connected])
+  }, [roomCode, router, fetchRoom])
 
   // Preload multiple upcoming questions' images for instant display
   useEffect(() => {
@@ -422,6 +424,9 @@ function GameContent() {
             <span className="text-sm text-muted">
               Question {currentQ + 1}/{room.questions.length}
             </span>
+            {!connected && (
+              <span className="text-xs text-muted">Reconnecting...</span>
+            )}
           </div>
           <div className="flex items-center gap-4">
             <div className="text-lg font-bold text-electric-lime">
