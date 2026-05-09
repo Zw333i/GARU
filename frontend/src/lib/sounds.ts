@@ -72,6 +72,30 @@ class SoundManager {
     return this.enabled
   }
 
+  // Warm up audio context + cache a tiny silent play to reduce first-play delay.
+  async warmUp(): Promise<void> {
+    if (typeof window === 'undefined') return
+
+    try {
+      const ctx = this.getContext()
+      if (ctx.state === 'suspended') {
+        await ctx.resume()
+      }
+    } catch {
+      // no-op
+    }
+
+    try {
+      const audio = new Audio(this.soundFiles.click)
+      audio.volume = 0
+      await audio.play().catch(() => {})
+      audio.pause()
+      audio.currentTime = 0
+    } catch {
+      // no-op
+    }
+  }
+
   // Generate a simple beep sound
   private playTone(frequency: number, duration: number, type: OscillatorType = 'sine', volume: number = 0.3) {
     if (!this.isEnabled()) return

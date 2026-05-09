@@ -75,6 +75,8 @@ function GameContent() {
   const [timedOut, setTimedOut] = useState(false)
   const [questionStartTime, setQuestionStartTime] = useState<number>(0)
   const [connected, setConnected] = useState(false)
+  const initializedRef = React.useRef(false)
+  const timerEndRef = React.useRef<number | null>(null)
 
   // Ref to avoid stale closure in timer
   const answeredRef = React.useRef(answered)
@@ -83,6 +85,7 @@ function GameContent() {
   // Ref for auto-advance timer so Enter key can cancel it
   const autoAdvanceTimerRef = React.useRef<number | null>(null)
   const warningPlayedRef = React.useRef(false)
+  const warmupDoneRef = React.useRef(false)
 
   // Global keyboard handler for Enter key
   useEffect(() => {
@@ -122,10 +125,15 @@ function GameContent() {
 
       if (data) {
         setRoom(data as Room)
-        setCurrentQ(0)
-        setTimeLeft(data.timer_duration)
-        setQuestionStartTime(Date.now())
-        setLoading(false)
+        if (!initializedRef.current) {
+          setCurrentQ(0)
+          setTimeLeft(data.timer_duration)
+          setQuestionStartTime(Date.now())
+          timerEndRef.current = Date.now() + data.timer_duration * 1000
+          warningPlayedRef.current = false
+          setLoading(false)
+          initializedRef.current = true
+        }
         return
       }
 
@@ -145,6 +153,22 @@ function GameContent() {
     // No need for local auth - using centralized auth store
     fetchRoom()
   }, [fetchRoom])
+
+  useEffect(() => {
+    const handleWarmUp = () => {
+      if (warmupDoneRef.current) return
+      warmupDoneRef.current = true
+      void sounds.warmUp()
+    }
+
+    window.addEventListener('pointerdown', handleWarmUp)
+    window.addEventListener('keydown', handleWarmUp)
+
+    return () => {
+      window.removeEventListener('pointerdown', handleWarmUp)
+      window.removeEventListener('keydown', handleWarmUp)
+    }
+  }, [])
 
   useEffect(() => {
     const handleReconnect = () => {
@@ -227,27 +251,35 @@ function GameContent() {
   useEffect(() => {
     if (loading || !room || answered || showResult) return
 
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 6 && prev > 1 && !warningPlayedRef.current && soundEnabled) {
-          warningPlayedRef.current = true
-          sounds.warning()
-        }
-        if (prev <= 1) {
-          clearInterval(timer)
-          // Use timeout to avoid calling handleSubmit during render
-          setTimeout(() => {
-            if (!answeredRef.current) handleSubmit(true)
-          }, 0)
-          return 0
-        }
-        return prev - 1
-      })
-    }, 1000)
+    if (!timerEndRef.current) {
+      timerEndRef.current = Date.now() + room.timer_duration * 1000
+    }
+
+    const tick = () => {
+      const remainingMs = Math.max(0, (timerEndRef.current || 0) - Date.now())
+      const next = Math.ceil(remainingMs / 1000)
+
+      setTimeLeft((prev) => (prev === next ? prev : next))
+
+      if (next <= 5 && next > 0 && !warningPlayedRef.current && soundEnabled) {
+        warningPlayedRef.current = true
+        sounds.warning()
+      }
+
+      if (next <= 0) {
+        // Use timeout to avoid calling handleSubmit during render
+        setTimeout(() => {
+          if (!answeredRef.current) handleSubmit(true)
+        }, 0)
+      }
+    }
+
+    const timer = window.setInterval(tick, 200)
+    tick()
 
     return () => clearInterval(timer)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, room, answered, showResult, currentQ])
+  }, [loading, room, answered, showResult, currentQ, soundEnabled])
 
   const handleSubmit = async (timeout = false) => {
     if (answered || !room || !user) return
@@ -366,6 +398,7 @@ function GameContent() {
     setShowResult(false)
     setTimeLeft(room.timer_duration)
     setQuestionStartTime(Date.now())
+    timerEndRef.current = Date.now() + room.timer_duration * 1000
     warningPlayedRef.current = false
 
   }
@@ -432,10 +465,15 @@ function GameContent() {
             <div className="text-lg font-bold text-electric-lime">
               {score} pts
             </div>
-            <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-xl ${
-              timeLeft <= 5 ? 'bg-hot-pink text-white animate-pulse' : 'bg-surface'
-            }`}>
-              {timeLeft}
+            <div className="flex flex-col items-center">
+              <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-xl ${
+                timeLeft <= 5 ? 'bg-hot-pink text-white animate-pulse' : 'bg-surface'
+              }`}>
+                {timeLeft}
+              </div>
+              {!connected && (
+                <span className="text-[10px] text-muted mt-1">Syncing timer...</span>
+              )}
             </div>
           </div>
         </div>

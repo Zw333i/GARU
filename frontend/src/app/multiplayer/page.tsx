@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import type { User } from '@supabase/supabase-js'
 import { useAuthStore } from '@/store/authStore'
 import { 
   GamepadIcon, 
@@ -106,6 +107,12 @@ function generateRoomCode(): string {
   return code
 }
 
+function getDisplayName(user: User | null, fallbackPrefix: string): string {
+  if (!user) return fallbackPrefix
+  const metadata = user.user_metadata || {}
+  return metadata.name || metadata.full_name || user.email?.split('@')[0] || `${fallbackPrefix}_${user.id.slice(0, 4)}`
+}
+
 // Ensure user exists in public.users table (FK requirement)
 async function ensureUserExists(userId: string): Promise<boolean> {
   try {
@@ -166,6 +173,10 @@ function MultiplayerContent() {
   const [joinCode, setJoinCode] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [guestLoading, setGuestLoading] = useState(false)
+  const [guestDialogOpen, setGuestDialogOpen] = useState(false)
+  const [guestName, setGuestName] = useState('')
+  const [guestNameError, setGuestNameError] = useState<string | null>(null)
   const autoJoinAttemptedRef = useRef(false)
 
   useEffect(() => {
@@ -201,7 +212,7 @@ function MultiplayerContent() {
       return
     }
     if (!user) {
-      setError('Sign in to host a game')
+      setError('Sign in or continue as guest to host a game')
       return
     }
 
@@ -254,7 +265,7 @@ function MultiplayerContent() {
               id: user.id,
               score: 0,
               answers: [],
-              username: user.user_metadata?.name || 'Host',
+              username: getDisplayName(user, 'Host'),
             }],
           })
           .select('id')
@@ -311,7 +322,7 @@ function MultiplayerContent() {
       return
     }
     if (!user) {
-      setError('Sign in to join a game')
+      setError('Sign in or continue as guest to join a game')
       return
     }
 
@@ -374,7 +385,7 @@ function MultiplayerContent() {
             id: user.id,
             score: 0,
             answers: [],
-            username: user.user_metadata?.name || 'Guest',
+            username: getDisplayName(user, 'Guest'),
           }
         ]
 
@@ -420,6 +431,67 @@ function MultiplayerContent() {
       setError(err?.message || 'Something went wrong. Please try again.')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleGuestSignIn = async () => {
+    if (guestLoading) return
+    setGuestNameError(null)
+    setGuestDialogOpen(true)
+  }
+
+  const startGuestSession = async () => {
+    if (guestLoading) return
+
+    const trimmedName = guestName.trim().replace(/\s+/g, ' ')
+    if (!trimmedName) {
+      setGuestNameError('Guest name is required')
+      return
+    }
+
+    if (trimmedName.length < 2) {
+      setGuestNameError('Guest name must be at least 2 characters')
+      return
+    }
+
+    const safeName = trimmedName.slice(0, 20)
+
+    setGuestLoading(true)
+    setError(null)
+
+    try {
+      const { data, error: signInError } = await supabase.auth.signInAnonymously()
+      if (signInError) {
+        setError(signInError.message || 'Unable to start a guest session')
+        return
+      }
+
+      if (data?.user?.id) {
+        try {
+          await supabase.auth.updateUser({
+            data: { name: safeName },
+          })
+        } catch {
+          // Non-blocking: continue even if metadata update fails.
+        }
+
+        await supabase
+          .from('users')
+          .upsert({
+            id: data.user.id,
+            username: safeName,
+            avatar_url: null,
+          }, { onConflict: 'id' })
+
+        await ensureUserExists(data.user.id)
+      }
+
+      setGuestDialogOpen(false)
+      setGuestName('')
+    } catch (err: any) {
+      setError(err?.message || 'Unable to start a guest session')
+    } finally {
+      setGuestLoading(false)
     }
   }
 
@@ -469,12 +541,20 @@ function MultiplayerContent() {
             {!authLoading && !isAuthenticated && (
               <div className="glass rounded-xl p-4 border border-yellow-500/30 mb-2">
                 <p className="text-sm text-yellow-400 text-center">
-                  You need to{' '}
-                  <Link href="/profile" className="text-electric-lime hover:underline font-bold">
-                    sign in
-                  </Link>{' '}
-                  to play multiplayer
+                  Sign in or continue as guest to play multiplayer
                 </p>
+                <div className="mt-3 flex items-center justify-center gap-3">
+                  <Link href="/profile" className="px-4 py-2 rounded-lg bg-surface text-ghost-white font-semibold hover:bg-gunmetal transition-colors">
+                    Sign in
+                  </Link>
+                  <button
+                    onClick={handleGuestSignIn}
+                    disabled={guestLoading}
+                    className="px-4 py-2 rounded-lg bg-electric-lime text-gunmetal font-semibold hover:bg-green-400 transition-colors disabled:opacity-60"
+                  >
+                    {guestLoading ? 'Starting...' : 'Continue as Guest'}
+                  </button>
+                </div>
               </div>
             )}
 
@@ -610,7 +690,7 @@ function MultiplayerContent() {
 
             {!isAuthenticated && !authLoading && (
               <p className="text-center text-muted text-sm">
-                <Link href="/profile" className="text-electric-lime hover:underline">Sign in</Link> to host a game
+                <span className="text-electric-lime">Sign in</span> or continue as guest to host a game
               </p>
             )}
           </motion.div>
@@ -664,12 +744,73 @@ function MultiplayerContent() {
 
               {!isAuthenticated && !authLoading && (
                 <p className="text-center text-muted text-sm mt-3">
-                  <Link href="/profile" className="text-electric-lime hover:underline">Sign in</Link> to join a game
+                  <span className="text-electric-lime">Sign in</span> or continue as guest to join a game
                 </p>
               )}
             </div>
           </motion.div>
         )}
+
+        <AnimatePresence>
+          {guestDialogOpen && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-50 flex items-center justify-center px-4"
+            >
+              <div className="absolute inset-0 bg-deep-void/70 backdrop-blur-sm" />
+              <motion.div
+                initial={{ opacity: 0, y: 20, scale: 0.98 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 20, scale: 0.98 }}
+                className="relative w-full max-w-md card-neon rounded-2xl p-6"
+              >
+                <div className="flex items-center gap-3 mb-4">
+                  <MaskIcon className="text-electric-lime" size={28} />
+                  <h3 className="text-xl font-bold">Choose a Guest Name</h3>
+                </div>
+                <p className="text-sm text-muted mb-4">
+                  This name shows up in multiplayer rooms.
+                </p>
+                <input
+                  value={guestName}
+                  onChange={(e) => {
+                    setGuestName(e.target.value)
+                    setGuestNameError(null)
+                  }}
+                  placeholder="Your name"
+                  maxLength={20}
+                  className="w-full px-4 py-3 bg-gunmetal border border-surface rounded-xl text-ghost-white placeholder-muted focus:outline-none focus:border-electric-lime transition-colors"
+                  autoFocus
+                />
+                {guestNameError && (
+                  <p className="text-sm text-hot-pink mt-2">{guestNameError}</p>
+                )}
+                <div className="mt-6 flex gap-3">
+                  <button
+                    onClick={() => {
+                      if (!guestLoading) {
+                        setGuestDialogOpen(false)
+                        setGuestNameError(null)
+                      }
+                    }}
+                    className="flex-1 py-3 rounded-xl bg-surface text-ghost-white font-semibold hover:bg-muted/30 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={startGuestSession}
+                    disabled={guestLoading}
+                    className="flex-1 py-3 rounded-xl bg-electric-lime text-gunmetal font-semibold hover:bg-green-400 transition-colors disabled:opacity-60"
+                  >
+                    {guestLoading ? 'Starting...' : 'Continue'}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   )

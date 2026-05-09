@@ -12,6 +12,11 @@ function getFirstName(fullName: string): string {
   return fullName.split(' ')[0]
 }
 
+const getAuthAvatarUrl = (metadata?: Record<string, any>) => {
+  if (!metadata) return undefined
+  return metadata.avatar_url || metadata.picture || metadata.avatar || undefined
+}
+
 export function AuthButton() {
   const { user, isAuthenticated, setUser, logout } = useUserStore()
   const [isLoading, setIsLoading] = useState(false)
@@ -43,7 +48,7 @@ export function AuthButton() {
           id: session.user.id,
           username: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Player',
           email: session.user.email,
-          avatarUrl: session.user.user_metadata?.avatar_url,
+          avatarUrl: getAuthAvatarUrl(session.user.user_metadata),
         })
       }
     }
@@ -56,7 +61,7 @@ export function AuthButton() {
           id: session.user.id,
           username: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Player',
           email: session.user.email,
-          avatarUrl: session.user.user_metadata?.avatar_url,
+          avatarUrl: getAuthAvatarUrl(session.user.user_metadata),
         })
         // Reset custom avatar to refetch
         setCustomAvatarUrl(null)

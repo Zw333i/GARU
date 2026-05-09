@@ -125,8 +125,8 @@ export default function ProfilePage() {
     }
   }, [user?.id])
   
-  // Get the avatar to display (custom > Google > default)
-  const displayAvatarUrl = customAvatarUrl || user?.user_metadata?.avatar_url
+  // Get the avatar to display (custom > provider > default)
+  const displayAvatarUrl = customAvatarUrl || user?.user_metadata?.avatar_url || user?.user_metadata?.picture || user?.user_metadata?.avatar
   
   // Handle avatar upload
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {

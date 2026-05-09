@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { saveGameScore } from '@/lib/supabase'
 import { useAuthStore } from '@/store/authStore'
 import { useSessionDataStore } from '@/store/sessionDataStore'
+import { api } from '@/lib/api'
 import { TeamLogo } from '@/components/icons/TeamLogos'
 import confetti from 'canvas-confetti'
 import { sounds } from '@/lib/sounds'
@@ -233,10 +234,10 @@ function ResultsContent() {
             setPlayAgainVotes(updatedRoom.play_again_votes)
           }
 
-          // If room was reset to waiting, redirect all players to lobby
-          if (updatedRoom.status === 'waiting' && !redirectingRef.current) {
+          // If room was reset to playing, redirect all players to game
+          if (updatedRoom.status === 'playing' && !redirectingRef.current) {
             redirectingRef.current = true
-            router.push(`/multiplayer/lobby?code=${roomCode}`)
+            router.push(`/multiplayer/game?code=${roomCode}`)
           }
         }
       )
@@ -263,31 +264,33 @@ function ResultsContent() {
       if (user.id === room.host_id && !redirectingRef.current) {
         const resetRoom = async () => {
           redirectingRef.current = true
-          // Reset the room: clear questions, scores, and set status back to waiting
+          // Reset the room: generate new questions and restart with same settings
+          const questions = await generateQuestions(room.game_type, room.question_count)
           const resetPlayers = room.players.map(p => ({
             id: p.id,
             score: 0,
             answers: [],
+            finished: false,
             username: profiles[p.id]?.username || '',
           }))
 
           await supabase
             .from('multiplayer_rooms')
             .update({
-              status: 'waiting',
-              questions: null,
+              status: 'playing',
+              questions,
               current_question: 0,
               play_again_votes: [],
               players: resetPlayers,
             })
             .eq('id', room.id)
 
-          // Host navigates to lobby
-          router.push(`/multiplayer/lobby?code=${roomCode}&host=true`)
+          // Host navigates directly into the new game
+          router.push(`/multiplayer/game?code=${roomCode}`)
         }
         resetRoom()
       }
-      // Non-host players will be redirected via real-time/polling when status changes to 'waiting'
+      // Non-host players will be redirected via real-time when status changes to 'playing'
     }
   }, [playAgainVotes, room, user, profiles, roomCode, router])
 
@@ -562,4 +565,94 @@ export default function ResultsPage() {
       <ResultsContent />
     </Suspense>
   )
+}
+
+// Generate questions based on game type
+async function generateQuestions(gameType: string, count: number): Promise<any[]> {
+  if (gameType === 'whos-that') {
+    const { data: players } = await supabase
+      .from('cached_players')
+      .select('player_id, full_name, team_abbreviation, position, season_stats')
+
+    if (!players || players.length === 0) {
+      return Array.from({ length: count }, (_, i) => ({
+        id: i,
+        playerId: 203999,
+        name: 'Nikola Jokic',
+        team: 'DEN',
+        position: 'C',
+        stats: { pts: 26.4, reb: 12.4, ast: 9.0 },
+      }))
+    }
+
+    const rolePlayers = players.filter(p => {
+      const pts = p.season_stats?.pts || 0
+      return pts >= 8 && pts <= 20
+    })
+
+    const shuffled = [...rolePlayers].sort(() => Math.random() - 0.5)
+    return shuffled.slice(0, count).map((p, i) => ({
+      id: i,
+      playerId: p.player_id,
+      name: p.full_name,
+      team: p.team_abbreviation,
+      position: p.position,
+      stats: {
+        pts: p.season_stats?.pts || 0,
+        reb: p.season_stats?.reb || 0,
+        ast: p.season_stats?.ast || 0,
+      },
+    }))
+  }
+
+  if (gameType === 'the-journey') {
+    try {
+      const response = await Promise.race([
+        api.getJourneyPlayers(Math.max(count * 2, 30), 2),
+        new Promise<null>((_, reject) =>
+          setTimeout(() => reject(new Error('Journey API timeout')), 8000)
+        ),
+      ])
+
+      if (response?.players && response.players.length > 0) {
+        const shuffled = [...response.players].sort(() => Math.random() - 0.5)
+        return shuffled.slice(0, count).map((p, i) => ({
+          id: i,
+          teams: p.teams,
+          answer: p.name,
+          playerId: p.id,
+        }))
+      }
+    } catch (err) {
+      console.error('[Results] Failed to fetch journey players from API, using fallback:', err)
+    }
+
+    const journeys = [
+      { teams: ['CLE', 'MIA', 'CLE', 'LAL'], answer: 'LeBron James', id: 2544 },
+      { teams: ['OKC', 'GSW', 'BKN', 'PHX'], answer: 'Kevin Durant', id: 201142 },
+      { teams: ['OKC', 'HOU', 'BKN', 'PHI', 'LAC'], answer: 'James Harden', id: 201935 },
+      { teams: ['SAS', 'TOR', 'LAC'], answer: 'Kawhi Leonard', id: 202695 },
+      { teams: ['IND', 'OKC', 'LAC', 'PHI'], answer: 'Paul George', id: 202331 },
+      { teams: ['CLE', 'BOS', 'BKN', 'DAL'], answer: 'Kyrie Irving', id: 202681 },
+      { teams: ['CHI', 'MIN', 'PHI', 'MIA'], answer: 'Jimmy Butler', id: 202710 },
+      { teams: ['TOR', 'SAS', 'CHI', 'SAC'], answer: 'DeMar DeRozan', id: 201942 },
+      { teams: ['GSW', 'DAL'], answer: 'Klay Thompson', id: 202691 },
+      { teams: ['POR', 'MIL'], answer: 'Damian Lillard', id: 203081 },
+      { teams: ['PHI', 'NOP', 'MIL', 'BOS'], answer: 'Jrue Holiday', id: 201950 },
+      { teams: ['TOR', 'IND'], answer: 'Pascal Siakam', id: 1627783 },
+      { teams: ['GSW'], answer: 'Stephen Curry', id: 201939 },
+      { teams: ['MIL'], answer: 'Giannis Antetokounmpo', id: 203507 },
+      { teams: ['DEN'], answer: 'Nikola Jokic', id: 203999 },
+    ]
+
+    const shuffled = [...journeys].sort(() => Math.random() - 0.5)
+    return shuffled.slice(0, count).map((j, i) => ({
+      id: i,
+      teams: j.teams,
+      answer: j.answer,
+      playerId: j.id,
+    }))
+  }
+
+  return []
 }

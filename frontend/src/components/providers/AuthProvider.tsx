@@ -9,6 +9,11 @@ import { useSessionDataStore } from '@/store/sessionDataStore'
 import { prefetchLabForPlayer } from '@/lib/labPrefetch'
 import { sounds } from '@/lib/sounds'
 
+const getAuthAvatarUrl = (metadata?: Record<string, any>) => {
+  if (!metadata) return undefined
+  return metadata.avatar_url || metadata.picture || metadata.avatar || undefined
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const setUser = useUserStore((state) => state.setUser)
   const updateStats = useUserStore((state) => state.updateStats)
@@ -62,11 +67,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                       session.user.user_metadata?.full_name ||
                       session.user.email?.split('@')[0] || 
                       'Player'
+          const avatarUrl = getAuthAvatarUrl(session.user.user_metadata)
           setUser({
             id: session.user.id,
             username,
             email: session.user.email || undefined,
-            avatarUrl: session.user.user_metadata?.avatar_url || undefined,
+            avatarUrl,
           })
 
           // Warm user session data immediately after auth bootstraps.
@@ -108,11 +114,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                       session.user.user_metadata?.full_name ||
                       session.user.email?.split('@')[0] || 
                       'Player'
+          const avatarUrl = getAuthAvatarUrl(session.user.user_metadata)
           setUser({
             id: session.user.id,
             username,
             email: session.user.email || undefined,
-            avatarUrl: session.user.user_metadata?.avatar_url || undefined,
+            avatarUrl,
           })
 
           // Sync user profile to Supabase on sign in
@@ -125,7 +132,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                             session.user.user_metadata?.full_name ||
                             session.user.email?.split('@')[0] || 
                             `Player_${session.user.id.slice(0, 8)}`,
-                  avatar_url: session.user.user_metadata?.avatar_url,
+                  avatar_url: avatarUrl,
                   updated_at: new Date().toISOString(),
                 }, {
                   onConflict: 'id',
