@@ -26,10 +26,11 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          NBA_API_TIMEOUT: "120"
-          NBA_API_MAX_RETRIES: "5"
-          NBA_API_RETRY_BASE_DELAY: "2"
+          NBA_API_TIMEOUT: "150"
+          NBA_API_MAX_RETRIES: "6"
+          NBA_API_RETRY_BASE_DELAY: "3"
           FAIL_ON_FETCH_ERROR: "true"
+          USE_CACHED_ON_FAILURE: "true"
         run: |
           cd backend
           python scripts/sync_to_supabase.py

@@ -37,6 +37,9 @@ NBA_API_TIMEOUT = int(os.getenv("NBA_API_TIMEOUT", "90"))
 NBA_API_MAX_RETRIES = int(os.getenv("NBA_API_MAX_RETRIES", "4"))
 NBA_API_RETRY_BASE_DELAY = float(os.getenv("NBA_API_RETRY_BASE_DELAY", "2"))
 FAIL_ON_FETCH_ERROR = os.getenv("FAIL_ON_FETCH_ERROR", "false").lower() == "true"
+USE_CACHED_ON_FAILURE = os.getenv("USE_CACHED_ON_FAILURE", "true").lower() == "true"
+
+CACHE_PATH = Path(__file__).parent.parent / "cache" / "nba_players_2025_26.json"
 
 T = TypeVar("T")
 
@@ -295,6 +298,11 @@ def fetch_all_players() -> List[Dict]:
     
     # Sort by PPG
     players.sort(key=lambda x: x["season_stats"]["pts"], reverse=True)
+
+    CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    with open(CACHE_PATH, "w", encoding="utf-8") as f:
+        json.dump(players, f, indent=2)
+    print(f"📦 Cached {len(players)} players to {CACHE_PATH}")
     
     return players
 
@@ -351,15 +359,20 @@ def main():
         players = fetch_all_players()
     except Exception as fetch_error:
         print(f"❌ Failed to fetch NBA data: {fetch_error}")
-        if FAIL_ON_FETCH_ERROR:
-            raise
+        if USE_CACHED_ON_FAILURE and CACHE_PATH.exists():
+            print(f"⚠️ Falling back to cached data at {CACHE_PATH}")
+            with open(CACHE_PATH, "r", encoding="utf-8") as f:
+                players = json.load(f)
+        else:
+            if FAIL_ON_FETCH_ERROR:
+                raise
 
-        print("⚠️ Skipping sync this run due to temporary NBA API issue.")
-        print("   Set FAIL_ON_FETCH_ERROR=true to force workflow failure on fetch errors.")
-        print("\n" + "=" * 50)
-        print("❌ Sync skipped (treated as failure for CI visibility)")
-        print("=" * 50)
-        raise RuntimeError("NBA fetch failed; sync skipped")
+            print("⚠️ Skipping sync this run due to temporary NBA API issue.")
+            print("   Set FAIL_ON_FETCH_ERROR=true to force workflow failure on fetch errors.")
+            print("\n" + "=" * 50)
+            print("❌ Sync skipped (treated as failure for CI visibility)")
+            print("=" * 50)
+            raise RuntimeError("NBA fetch failed; sync skipped")
     
     if not players:
         print("❌ No players fetched. Aborting.")
