@@ -307,6 +307,38 @@ def fetch_all_players() -> List[Dict]:
     return players
 
 
+def load_cached_players() -> List[Dict]:
+    """
+    Load cached player data from disk.
+    Handles both old format (dict with 'players' key) and new format (flat list).
+    """
+    if not CACHE_PATH.exists():
+        print(f"⚠️  Cache file not found at {CACHE_PATH}")
+        return []
+    
+    try:
+        with open(CACHE_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        
+        # Handle old cache format: {"timestamp": "...", "season": "...", "count": 521, "players": [...]}
+        if isinstance(data, dict) and "players" in data:
+            players = data["players"]
+            print(f"✅ Loaded {len(players)} players from legacy cache format")
+            return players
+        
+        # Handle new cache format: flat list [...]
+        if isinstance(data, list):
+            print(f"✅ Loaded {len(data)} players from cache")
+            return data
+        
+        print(f"⚠️  Unexpected cache format: {type(data)}")
+        return []
+    
+    except Exception as e:
+        print(f"⚠️  Error loading cache: {e}")
+        return []
+
+
 def sync_to_supabase(players: List[Dict]):
     """Sync player data to Supabase cached_players table"""
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
@@ -347,56 +379,80 @@ def sync_to_supabase(players: List[Dict]):
 
 
 def main():
-    """Main sync function"""
+    """Main sync function - gracefully falls back to cache if NBA API unavailable"""
     print("=" * 50)
     print("🏀 GARU - NBA Data Sync to Supabase")
     print(f"📅 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"🗓️  Season: {CURRENT_SEASON}")
     print("=" * 50)
     
-    # Step 1: Fetch all players from NBA API
+    # Step 1: Try fetching fresh data from NBA API
+    players = None
+    is_using_cache = False
+    
     try:
         players = fetch_all_players()
+        print("✅ Successfully fetched fresh data from NBA API")
     except Exception as fetch_error:
-        print(f"❌ Failed to fetch NBA data: {fetch_error}")
-        if USE_CACHED_ON_FAILURE and CACHE_PATH.exists():
-            print(f"⚠️ Falling back to cached data at {CACHE_PATH}")
-            with open(CACHE_PATH, "r", encoding="utf-8") as f:
-                players = json.load(f)
+        print(f"\n⚠️  NBA API unavailable: {type(fetch_error).__name__}")
+        print(f"   Details: {str(fetch_error)[:100]}...")
+        
+        # Try fallback to cache
+        if USE_CACHED_ON_FAILURE:
+            print(f"\n🔄 Attempting to load cached data...")
+            players = load_cached_players()
+            
+            if players:
+                is_using_cache = True
+                print(f"📦 Using {len(players)} players from cache (data may be stale)")
+                print(f"   Cache path: {CACHE_PATH}")
+            else:
+                print(f"⚠️  No valid cache found. Cannot proceed.")
+                if FAIL_ON_FETCH_ERROR:
+                    raise RuntimeError("No fresh data and no cache available")
+                print("\n" + "=" * 50)
+                print("⏭️  Skipping sync (NBA API down, no cache)")
+                print("=" * 50)
+                return  # Exit gracefully with code 0
         else:
+            # Cache fallback disabled
             if FAIL_ON_FETCH_ERROR:
                 raise
-
-            print("⚠️ Skipping sync this run due to temporary NBA API issue.")
-            print("   Set FAIL_ON_FETCH_ERROR=true to force workflow failure on fetch errors.")
-            print("\n" + "=" * 50)
-            print("❌ Sync skipped (treated as failure for CI visibility)")
-            print("=" * 50)
-            raise RuntimeError("NBA fetch failed; sync skipped")
+            print("⚠️ Cache fallback disabled. Skipping sync.")
+            return  # Exit gracefully with code 0
     
     if not players:
-        print("❌ No players fetched. Aborting.")
-        raise RuntimeError("No players fetched from NBA API")
+        print("❌ No players available. Aborting.")
+        raise RuntimeError("No players to sync")
     
     print(f"\n📊 Stats Summary:")
     print(f"   Total players: {len(players)}")
-    print(f"   Top scorer: {players[0]['full_name']} ({players[0]['season_stats']['pts']} PPG)")
+    if players:
+        print(f"   Top scorer: {players[0]['full_name']} ({players[0]['season_stats']['pts']} PPG)")
     
     # Show position distribution
     positions = {}
     for p in players:
-        pos = p["position"]
+        pos = p.get("position", "SF")
         positions[pos] = positions.get(pos, 0) + 1
     print(f"   Position distribution: {positions}")
+    if is_using_cache:
+        print(f"\n   ⚠️  Data is stale (from cache, not fresh API fetch)")
     
     # Step 2: Sync to Supabase
     print()
     sync_ok = sync_to_supabase(players)
     if not sync_ok:
+        if not FAIL_ON_FETCH_ERROR:
+            print("\n⚠️ Sync failed, but not failing workflow (FAIL_ON_FETCH_ERROR=false)")
+            return
         raise RuntimeError("Failed to sync players to Supabase")
     
     print("\n" + "=" * 50)
-    print("✅ Sync complete!")
+    if is_using_cache:
+        print("✅ Sync complete (using cached data)")
+    else:
+        print("✅ Sync complete (fresh data from NBA API)")
     print("=" * 50)
 
 
