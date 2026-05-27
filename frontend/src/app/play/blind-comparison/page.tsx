@@ -325,7 +325,6 @@ export default function BlindComparisonPage() {
 
       const duration = Math.max(1, Math.round((Date.now() - gameStartTime) / 1000))
       await saveGameScore({
-        user_id: user.id,
         game_type: 'blind-comparison',
         score,
         correct_answers: choicesMade,

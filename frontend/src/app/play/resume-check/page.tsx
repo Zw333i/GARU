@@ -213,7 +213,6 @@ export default function ResumeCheckPage() {
       if (!user) return
       const duration = Math.floor((Date.now() - gameStartTime) / 1000)
       await saveGameScore({
-        user_id: user.id,
         game_type: 'resume-check',
         score: finalScore,
         correct_answers: finalCorrect,

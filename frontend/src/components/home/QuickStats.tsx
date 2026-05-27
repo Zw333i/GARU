@@ -50,7 +50,7 @@ export function QuickStats() {
   // Fetch stats when user is authenticated (uses session cache)
   useEffect(() => {
     if (user && isAuthenticated && !isStatsLoaded && !isStatsLoading) {
-      fetchUserStats(user.id)
+      fetchUserStats()
     }
   }, [user, isAuthenticated, isStatsLoaded, isStatsLoading, fetchUserStats])
 

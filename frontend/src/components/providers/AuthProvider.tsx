@@ -76,7 +76,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           })
 
           // Warm user session data immediately after auth bootstraps.
-          void fetchUserStats(session.user.id)
+          void fetchUserStats()
         }
       } catch (error) {
         console.error('Error checking session:', error)
@@ -103,7 +103,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
-        console.log('Auth state changed:', event, session?.user?.email)
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('Auth state changed:', event)
+        }
         
         // Update centralized auth store immediately
         setSession(session)
@@ -144,7 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
 
           // Prefetch profile/history/achievements in background on every valid auth event.
-          void fetchUserStats(session.user.id)
+          void fetchUserStats()
         } else {
           // User logged out - clear session data
           clearSessionData()

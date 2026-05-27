@@ -12,6 +12,11 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 })
 
+async function getAuthenticatedUserId(): Promise<string | null> {
+  const { data: { user } } = await supabase.auth.getUser()
+  return user?.id ?? null
+}
+
 // Types for database tables
 export interface Player {
   player_id: number
@@ -247,11 +252,17 @@ export interface GameScore {
 }
 
 // Save a game score
-export async function saveGameScore(score: Omit<GameScore, 'id' | 'created_at'>): Promise<GameScore | null> {
+export type GameScoreInput = Omit<GameScore, 'id' | 'created_at' | 'user_id'>
+
+export async function saveGameScore(score: GameScoreInput): Promise<GameScore | null> {
   try {
+    const userId = await getAuthenticatedUserId()
+    if (!userId) return null
+
+    const payload = { ...score, user_id: userId }
     const { data, error } = await supabase
       .from('game_scores')
-      .insert(score)
+      .insert(payload)
       .select()
       .single()
     
@@ -260,27 +271,24 @@ export async function saveGameScore(score: Omit<GameScore, 'id' | 'created_at'>)
       return null
     }
     
-    // Also update user stats
-    await updateUserStats(score.user_id, score.score, score.correct_answers || 0, score.questions_answered || 0)
-    
-    // Trigger achievements
-    await checkFirstStepsAchievement(score.user_id)
+    // Progression updates should be handled server-side to prevent tampering.
+    await checkFirstStepsAchievement()
     
     // Get updated user streak for streak achievement
     const { data: user } = await supabase
       .from('users')
       .select('current_streak')
-      .eq('id', score.user_id)
+      .eq('id', userId)
       .single()
     
     if (user?.current_streak) {
-      await checkStreakAchievement(score.user_id, user.current_streak)
+      await checkStreakAchievement(user.current_streak)
     }
     
     // Track role player guesses for guess-based games
     if (['whos-that', 'the-journey', 'blind-comparison', 'resume-check'].includes(score.game_type)) {
       if ((score.correct_answers || 0) > 0) {
-        await updateAchievementProgress(score.user_id, 'role_player_expert', score.correct_answers || 0)
+        await updateAchievementProgress('role_player_expert', score.correct_answers || 0)
       }
     }
     
@@ -290,55 +298,11 @@ export async function saveGameScore(score: Omit<GameScore, 'id' | 'created_at'>)
   }
 }
 
-import { calculateLevel } from '@/lib/xpUtils'
-
-// Update user stats after a game
-export async function updateUserStats(
-  userId: string, 
-  xpGained: number,
-  correctAnswers: number,
-  totalQuestions: number
-): Promise<void> {
-  try {
-    // First get current user stats
-    const { data: user } = await supabase
-      .from('users')
-      .select('xp, level, wins, losses, current_streak, best_streak, games_played')
-      .eq('id', userId)
-      .single()
-    
-    if (!user) return
-    
-    // Calculate new values
-    const newXP = (user.xp || 0) + xpGained
-    const newLevel = calculateLevel(newXP) // Use proper scaling XP system
-    const isWin = totalQuestions > 0 && correctAnswers >= totalQuestions / 2
-    const newWins = (user.wins || 0) + (isWin ? 1 : 0)
-    const newLosses = (user.losses || 0) + (isWin ? 0 : 1)
-    const newStreak = isWin ? (user.current_streak || 0) + 1 : 0
-    const newBestStreak = Math.max(user.best_streak || 0, newStreak)
-    const newGamesPlayed = (user.games_played || 0) + 1
-    
-    // Update user
-    await supabase
-      .from('users')
-      .update({
-        xp: newXP,
-        level: newLevel,
-        wins: newWins,
-        losses: newLosses,
-        current_streak: newStreak,
-        best_streak: newBestStreak,
-        games_played: newGamesPlayed,
-      })
-      .eq('id', userId)
-  } catch (err) {
-    console.warn('Failed to update user stats:', err)
-  }
-}
-
 // Get user's game history
-export async function getUserGameHistory(userId: string, limit: number = 10): Promise<GameScore[]> {
+export async function getUserGameHistory(limit: number = 10): Promise<GameScore[]> {
+  const userId = await getAuthenticatedUserId()
+  if (!userId) return []
+
   const { data, error } = await supabase
     .from('game_scores')
     .select('*')
@@ -402,8 +366,11 @@ export const ACHIEVEMENTS: Achievement[] = [
 ]
 
 // Get user's achievements
-export async function getUserAchievements(userId: string): Promise<UserAchievement[]> {
+export async function getUserAchievements(): Promise<UserAchievement[]> {
   try {
+    const userId = await getAuthenticatedUserId()
+    if (!userId) return []
+
     const { data, error } = await supabase
       .from('user_achievements')
       .select('*')
@@ -419,11 +386,13 @@ export async function getUserAchievements(userId: string): Promise<UserAchieveme
 
 // Update achievement progress
 export async function updateAchievementProgress(
-  userId: string,
   achievementType: string,
   incrementBy: number = 1
 ): Promise<boolean> {
   try {
+    const userId = await getAuthenticatedUserId()
+    if (!userId) return false
+
     // Get current progress
     const { data: existing } = await supabase
       .from('user_achievements')
@@ -472,13 +441,16 @@ export async function updateAchievementProgress(
 }
 
 // Check and unlock first_steps achievement (first game completed)
-export async function checkFirstStepsAchievement(userId: string): Promise<boolean> {
-  return await updateAchievementProgress(userId, 'first_steps', 1)
+export async function checkFirstStepsAchievement(): Promise<boolean> {
+  return await updateAchievementProgress('first_steps', 1)
 }
 
 // Check streak achievement (called when streak is updated)
-export async function checkStreakAchievement(userId: string, currentStreak: number): Promise<boolean> {
+export async function checkStreakAchievement(currentStreak: number): Promise<boolean> {
   try {
+    const userId = await getAuthenticatedUserId()
+    if (!userId) return false
+
     const { data: existing } = await supabase
       .from('user_achievements')
       .select('*')
@@ -507,12 +479,12 @@ export async function checkStreakAchievement(userId: string, currentStreak: numb
 }
 
 // Increment stat views (for Stat Nerd achievement)
-export async function incrementStatViews(userId: string): Promise<boolean> {
-  return await updateAchievementProgress(userId, 'stat_nerd', 1)
+export async function incrementStatViews(): Promise<boolean> {
+  return await updateAchievementProgress('stat_nerd', 1)
 }
 
 // Increment role player guesses (for Role Player Expert achievement)
-export async function incrementRolePlayerGuesses(userId: string, count: number = 1): Promise<boolean> {
-  return await updateAchievementProgress(userId, 'role_player_expert', count)
+export async function incrementRolePlayerGuesses(count: number = 1): Promise<boolean> {
+  return await updateAchievementProgress('role_player_expert', count)
 }
 

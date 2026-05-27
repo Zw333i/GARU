@@ -159,7 +159,6 @@ function ResultsContent() {
 
           // Save to database
           await saveGameScore({
-            user_id: currentUser.id,
             game_type: gameTypeKey,
             score: myData.score,
             correct_answers: correctCount,

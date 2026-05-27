@@ -203,7 +203,7 @@ export default function ProfilePage() {
   useEffect(() => {
     if (user && isAuthenticated) {
       if (!isStatsLoaded && !isStatsLoading) {
-        fetchUserStats(user.id)
+        fetchUserStats()
       } else if (isStatsLoaded && statsLastFetchedAt) {
         // Refresh only if cache is stale to keep profile snappy.
         const isStale = Date.now() - statsLastFetchedAt > 2 * 60 * 1000

@@ -5,7 +5,6 @@ import { motion } from 'framer-motion'
 import { TargetIcon, QuestionIcon, XIcon, ConfettiIcon } from '@/components/icons'
 import { sounds } from '@/lib/sounds'
 import { supabase } from '@/lib/supabase'
-import { calculateLevel } from '@/lib/xpUtils'
 import { checkGuess } from '@/lib/nameMatch'
 
 // XP reward for daily challenge
@@ -13,36 +12,36 @@ const DAILY_CHALLENGE_XP = 25
 
 // Pool of players for daily challenges - rotates based on date
 const DAILY_PLAYERS = [
-  { id: 203507, name: 'Giannis Antetokounmpo', team: 'MIL', hint: 'Greek Freak, 2x MVP, Averages 30+ PPG' },
-  { id: 203999, name: 'Nikola Jokic', team: 'DEN', hint: '3x MVP, Triple-double machine, Serbian big man' },
-  { id: 1629029, name: 'Luka Doncic', team: 'DAL', hint: 'Slovenian prodigy, All-Star PG, former EuroLeague MVP' },
-  { id: 201939, name: 'Stephen Curry', team: 'GSW', hint: 'Greatest shooter ever, 4x Champion, Chef Curry' },
-  { id: 2544, name: 'LeBron James', team: 'LAL', hint: 'King James, 4x Champion, All-time scoring leader' },
-  { id: 201142, name: 'Kevin Durant', team: 'PHX', hint: 'Easy Money Sniper, 2x Finals MVP, 7 footer with guard skills' },
-  { id: 203954, name: 'Joel Embiid', team: 'PHI', hint: 'The Process, 2023 MVP, Cameroonian center' },
-  { id: 1628369, name: 'Jayson Tatum', team: 'BOS', hint: '2024 NBA Champion, Olympic gold medalist, Duke product' },
-  { id: 1628983, name: 'Shai Gilgeous-Alexander', team: 'OKC', hint: 'Canadian star, smooth midrange, Thunder franchise player' },
-  { id: 1630162, name: 'Anthony Edwards', team: 'MIN', hint: 'Ant-Man, athletic freak, Georgia product' },
-  { id: 203081, name: 'Damian Lillard', team: 'MIL', hint: 'Dame Time, Oakland native, 0.9 shot legend' },
-  { id: 202681, name: 'Kyrie Irving', team: 'DAL', hint: 'Uncle Drew, handles wizard, 2016 Finals hero' },
-  { id: 1641705, name: 'Victor Wembanyama', team: 'SAS', hint: 'Alien, 7\'4" French phenom, 2024 ROY' },
-  { id: 1629630, name: 'Ja Morant', team: 'MEM', hint: 'Gravity-defying dunks, Murray State product, must-see TV' },
-  { id: 1626164, name: 'Devin Booker', team: 'PHX', hint: 'Book, 70-point game, Moss Point legend' },
-  { id: 1627759, name: 'Jaylen Brown', team: 'BOS', hint: '2024 Finals MVP, Cal product, two-way star' },
-  { id: 1629027, name: 'Trae Young', team: 'ATL', hint: 'Ice Trae, deep 3s, Oklahoma product' },
-  { id: 1628378, name: 'Donovan Mitchell', team: 'CLE', hint: 'Spida, Louisville product, electrifying scorer' },
-  { id: 203078, name: 'Bradley Beal', team: 'LAC', hint: 'Big Panda, Florida product, elite scorer' },
-  { id: 202710, name: 'Jimmy Butler', team: 'MIA', hint: 'Jimmy Buckets, playoff performer, Marquette product' },
-  { id: 1628973, name: 'Jalen Brunson', team: 'NYK', hint: 'Villanova champion, Knicks floor general, son of Rick' },
-  { id: 1629684, name: 'Franz Wagner', team: 'ORL', hint: 'German forward, Michigan product, rising star' },
-  { id: 1630595, name: 'Cade Cunningham', team: 'DET', hint: '2021 #1 pick, Oklahoma State product, Pistons franchise' },
-  { id: 1630578, name: 'Alperen Sengun', team: 'HOU', hint: 'Turkish big man, post wizard, Rockets center' },
-  { id: 1627734, name: 'Domantas Sabonis', team: 'SAC', hint: 'Gonzaga product, son of Arvydas, triple-double threat' },
-  { id: 1628389, name: 'Bam Adebayo', team: 'MIA', hint: 'Kentucky product, defensive anchor, versatile big' },
-  { id: 201566, name: 'Russell Westbrook', team: 'SAC', hint: 'Brodie, triple-double king, UCLA product' },
-  { id: 977, name: 'Kobe Bryant', team: 'LAL', hint: 'Black Mamba, 5x Champion, 81-point game legend' },
-  { id: 1495, name: 'Tim Duncan', team: 'SAS', hint: 'The Big Fundamental, 5x Champion, USVI product' },
-  { id: 2548, name: 'Dwyane Wade', team: 'MIA', hint: 'Flash, 3x Champion, 2006 Finals MVP' },
+  { id: 203507, name: 'Giannis Antetokounmpo', team: 'MIL', hint: 'Freaky Greek' },
+  { id: 203999, name: 'Nikola Jokic', team: 'DEN', hint: 'Loves horses' },
+  { id: 1629029, name: 'Luka Doncic', team: 'DAL', hint: 'Slovenian prodigy and former EuroLeague MVP' },
+  { id: 201939, name: 'Stephen Curry', team: 'GSW', hint: 'Night-Night' },
+  { id: 2544, name: 'LeBron James', team: 'LAL', hint: 'King' },
+  { id: 201142, name: 'Kevin Durant', team: 'PHX', hint: 'Easy Money Sniper' },
+  { id: 203954, name: 'Joel Embiid', team: 'PHI', hint: 'The Process' },
+  { id: 1628369, name: 'Jayson Tatum', team: 'BOS', hint: 'The Anomaly' },
+  { id: 1628983, name: 'Shai Gilgeous-Alexander', team: 'OKC', hint: 'Canadian star with a smooth midrange' },
+  { id: 1630162, name: 'Anthony Edwards', team: 'MIN', hint: '___-Man' },
+  { id: 203081, name: 'Damian Lillard', team: 'MIL', hint: '____ Time' },
+  { id: 202681, name: 'Kyrie Irving', team: 'DAL', hint: 'Uncle Drew' },
+  { id: 1641705, name: 'Victor Wembanyama', team: 'SAS', hint: 'Alien Breed' },
+  { id: 1629630, name: 'Ja Morant', team: 'MEM', hint: 'Gravity-defying dunks & must-see TV' },
+  { id: 1626164, name: 'Devin Booker', team: 'PHX', hint: 'Moss Point legend' },
+  { id: 1627759, name: 'Jaylen Brown', team: 'BOS', hint: 'Two-way Star' },
+  { id: 1629027, name: 'Trae Young', team: 'ATL', hint: 'Ice in his veins' },
+  { id: 1628378, name: 'Donovan Mitchell', team: 'CLE', hint: 'Spiderman' },
+  { id: 203078, name: 'Bradley Beal', team: 'LAC', hint: 'Big Panda' },
+  { id: 202710, name: 'Jimmy Butler', team: 'MIA', hint: 'Himmy Buckets' },
+  { id: 1628973, name: 'Jalen Brunson', team: 'NYK', hint: 'NYCs Finest' },
+  { id: 1629684, name: 'Franz Wagner', team: 'ORL', hint: 'German forward and a rising star' },
+  { id: 1630595, name: 'Cade Cunningham', team: 'DET', hint: 'The Motor____' },
+  { id: 1630578, name: 'Alperen Sengun', team: 'HOU', hint: 'Turkish big man' },
+  { id: 1627734, name: 'Domantas Sabonis', team: 'SAC', hint: 'Gonzaga product' },
+  { id: 1628389, name: 'Bam Adebayo', team: 'MIA', hint: 'Mr. 83' },
+  { id: 201566, name: 'Russell Westbrook', team: 'SAC', hint: 'Mr. Why Not' },
+  { id: 977, name: 'Kobe Bryant', team: 'LAL', hint: 'Black Mamba' },
+  { id: 1495, name: 'Tim Duncan', team: 'SAS', hint: 'The Big Fundamental' },
+  { id: 2548, name: 'Dwyane Wade', team: 'MIA', hint: 'The Flash' },
 ]
 
 // Get today's player based on date (UTC)
@@ -116,34 +115,10 @@ export function DailyChallenge() {
     if (!user || xpAwarded) return
     
     try {
-      // Get current user stats
-      const { data: userData } = await supabase
-        .from('users')
-        .select('xp, level, daily_challenges_completed, current_streak, best_streak')
-        .eq('id', user.id)
-        .single()
-      
-      if (userData) {
-        const xpGain = correct ? DAILY_CHALLENGE_XP : Math.floor(DAILY_CHALLENGE_XP / 2) // Half XP for trying
-        const newXP = (userData.xp || 0) + xpGain
-        const newLevel = calculateLevel(newXP) // Use proper scaling XP system
-        const newDailyChallenges = (userData.daily_challenges_completed || 0) + 1
-        const newStreak = correct ? (userData.current_streak || 0) + 1 : 0
-        const newBestStreak = Math.max(userData.best_streak || 0, newStreak)
-        
-        await supabase
-          .from('users')
-          .update({
-            xp: newXP,
-            level: newLevel,
-            daily_challenges_completed: newDailyChallenges,
-            current_streak: newStreak,
-            best_streak: newBestStreak,
-          })
-          .eq('id', user.id)
-        
-        setXpAwarded(true)
-        console.log(`[OK] Awarded ${xpGain} XP for daily challenge`)
+      const xpGain = correct ? DAILY_CHALLENGE_XP : Math.floor(DAILY_CHALLENGE_XP / 2)
+      setXpAwarded(true)
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`Skipped client XP award (${xpGain}) for daily challenge.`)
       }
     } catch (err) {
       console.error('Failed to award XP:', err)

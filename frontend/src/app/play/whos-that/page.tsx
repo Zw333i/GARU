@@ -239,7 +239,6 @@ export default function WhosThatPage() {
       if (user) {
         const timeTaken = Math.floor((Date.now() - gameStartTime) / 1000)
         await saveGameScore({
-          user_id: user.id,
           game_type: 'whos-that',
           score: finalScore,
           questions_answered: questionCount,
@@ -248,7 +247,7 @@ export default function WhosThatPage() {
         })
         // Track role player achievement
         if (finalCorrect > 0) {
-          await incrementRolePlayerGuesses(user.id, finalCorrect)
+          await incrementRolePlayerGuesses(finalCorrect)
         }
         // Refresh session cache so profile/stats reflect new data
         await useSessionDataStore.getState().refreshStats()

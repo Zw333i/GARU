@@ -88,7 +88,6 @@ export default function JourneyPage() {
       if (user) {
         const duration = Math.floor((Date.now() - gameStartTime) / 1000)
         await saveGameScore({
-          user_id: user.id,
           game_type: 'the-journey',
           score: score,
           correct_answers: correctCount,

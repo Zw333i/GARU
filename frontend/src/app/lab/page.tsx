@@ -160,7 +160,7 @@ export default function LabPage() {
     // Track stat view for achievement using cached user
     try {
       if (user) {
-        await incrementStatViews(user.id)
+        await incrementStatViews()
       }
     } catch {
       // Silently fail achievement tracking
