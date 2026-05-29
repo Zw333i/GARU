@@ -241,12 +241,6 @@ export function HexShotChart({ selectedPlayer, refreshKey = 0 }: HexShotChartPro
               - {selectedPlayer.name}
             </span>
           )}
-          {usingRealData && selectedPlayer && (
-            <span className="ml-2 text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full flex items-center gap-1">
-              <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-              LIVE DATA
-            </span>
-          )}
         </h2>
         {!selectedPlayer && (
           <span className="text-sm text-muted">Select a player above</span>

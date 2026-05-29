@@ -29,7 +29,6 @@ export function ShotChartVisualizer({ selectedPlayer }: ShotChartVisualizerProps
   const [showMade, setShowMade] = useState(true)
   const [showMissed, setShowMissed] = useState(true)
   const [isLoading, setIsLoading] = useState(false)
-  const [usingRealData, setUsingRealData] = useState(false)
   const svgRef = useRef<SVGSVGElement>(null)
 
   // Fetch shots from API when player changes
@@ -45,7 +44,6 @@ export function ShotChartVisualizer({ selectedPlayer }: ShotChartVisualizerProps
         const res = await fetch(`${API_URL}/api/stats/shot-chart/${selectedPlayer.id}`)
         if (res.ok) {
           const data = await res.json()
-          setUsingRealData(data.using_real_data)
           const mappedShots: Shot[] = data.shots.map((s: { x: number; y: number; made: boolean; is_three: boolean }) => ({
             x: s.x,
             y: s.y,
@@ -86,12 +84,6 @@ export function ShotChartVisualizer({ selectedPlayer }: ShotChartVisualizerProps
           {selectedPlayer && (
             <span className="text-muted font-normal text-sm ml-2">
               - {selectedPlayer.name}
-            </span>
-          )}
-          {usingRealData && selectedPlayer && (
-            <span className="ml-2 text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full flex items-center gap-1">
-              <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-              LIVE DATA
             </span>
           )}
         </h2>

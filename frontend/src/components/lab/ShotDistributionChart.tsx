@@ -39,7 +39,6 @@ const ZONE_COLORS: Record<string, string> = {
 export function ShotDistributionChart({ selectedPlayer, refreshKey = 0 }: ShotDistributionChartProps) {
   const [zones, setZones] = useState<ZoneData[]>([])
   const [isLoading, setIsLoading] = useState(false)
-  const [usingRealData, setUsingRealData] = useState(false)
   const [seasonUsed, setSeasonUsed] = useState<string | null>(null)
   const [usedFallbackSeason, setUsedFallbackSeason] = useState(false)
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
@@ -82,7 +81,6 @@ export function ShotDistributionChart({ selectedPlayer, refreshKey = 0 }: ShotDi
         if (res.ok) {
           const data = await res.json()
           if (aborted) return
-          setUsingRealData(data.using_real_data)
           setSeasonUsed(data.season_used || null)
           setUsedFallbackSeason(!!data.season_fallback_used)
           const hasData = data.zones.some((z: ZoneData) => z.attempts > 0)
@@ -94,7 +92,6 @@ export function ShotDistributionChart({ selectedPlayer, refreshKey = 0 }: ShotDi
             setZones(zonesWithColors)
           } else {
             setZones([])
-            setUsingRealData(false)
             setErrorMessage("Error 69: Can't fetch real shot distribution data for this player.")
           }
         } else {
@@ -176,12 +173,6 @@ export function ShotDistributionChart({ selectedPlayer, refreshKey = 0 }: ShotDi
         <span className="text-muted font-normal text-sm ml-2">
           - {selectedPlayer.name}
         </span>
-        {usingRealData && (
-          <span className="ml-auto text-xs bg-green-500/20 text-green-400 px-2 py-0.5 rounded-full flex items-center gap-1">
-            <span className="w-1.5 h-1.5 bg-green-400 rounded-full animate-pulse" />
-            LIVE DATA
-          </span>
-        )}
       </h3>
 
       {zones.length === 0 && (

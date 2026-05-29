@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, Suspense } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
+import HCaptcha from '@hcaptcha/react-hcaptcha'
 import { supabase } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
 import { useAuthStore } from '@/store/authStore'
@@ -177,6 +178,9 @@ function MultiplayerContent() {
   const [guestDialogOpen, setGuestDialogOpen] = useState(false)
   const [guestName, setGuestName] = useState('')
   const [guestNameError, setGuestNameError] = useState<string | null>(null)
+  const [guestAuthError, setGuestAuthError] = useState<string | null>(null)
+  const [guestCaptchaError, setGuestCaptchaError] = useState<string | null>(null)
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
   const autoJoinAttemptedRef = useRef(false)
 
   useEffect(() => {
@@ -437,11 +441,18 @@ function MultiplayerContent() {
   const handleGuestSignIn = async () => {
     if (guestLoading) return
     setGuestNameError(null)
+    setGuestAuthError(null)
+    setGuestCaptchaError(null)
+    setCaptchaToken(null)
+    setError(null)
     setGuestDialogOpen(true)
   }
 
   const startGuestSession = async () => {
     if (guestLoading) return
+
+    setGuestAuthError(null)
+    setGuestCaptchaError(null)
 
     const trimmedName = guestName.trim().replace(/\s+/g, ' ')
     if (!trimmedName) {
@@ -456,13 +467,25 @@ function MultiplayerContent() {
 
     const safeName = trimmedName.slice(0, 20)
 
+    if (!captchaToken) {
+      setGuestCaptchaError('Complete the hCaptcha to continue.')
+      return
+    }
+
     setGuestLoading(true)
     setError(null)
 
     try {
-      const { data, error: signInError } = await supabase.auth.signInAnonymously()
+      const { data, error: signInError } = await supabase.auth.signInAnonymously({
+        options: { captchaToken },
+      })
       if (signInError) {
-        setError(signInError.message || 'Unable to start a guest session')
+        const rawMessage = signInError.message || 'Unable to start a guest session'
+        const normalized = rawMessage.toLowerCase()
+        const friendlyMessage = normalized.includes('anonymous') && normalized.includes('disabled')
+          ? 'Guest sign-in is disabled right now. Ask the admin to enable Anonymous sign-ins in Supabase Auth settings.'
+          : rawMessage
+        setGuestAuthError(friendlyMessage)
         return
       }
 
@@ -488,8 +511,9 @@ function MultiplayerContent() {
 
       setGuestDialogOpen(false)
       setGuestName('')
+      setCaptchaToken(null)
     } catch (err: any) {
-      setError(err?.message || 'Unable to start a guest session')
+      setGuestAuthError(err?.message || 'Unable to start a guest session')
     } finally {
       setGuestLoading(false)
     }
@@ -787,12 +811,35 @@ function MultiplayerContent() {
                 {guestNameError && (
                   <p className="text-sm text-hot-pink mt-2">{guestNameError}</p>
                 )}
+                <div className="mt-4">
+                  <HCaptcha
+                    sitekey={process.env.NEXT_PUBLIC_HCAPTCHA_SITEKEY || ''}
+                    theme="dark"
+                    onVerify={(token) => {
+                      setCaptchaToken(token)
+                      setGuestCaptchaError(null)
+                    }}
+                    onExpire={() => setCaptchaToken(null)}
+                    onError={() => setGuestCaptchaError('hCaptcha failed to load. Please refresh and try again.')}
+                  />
+                </div>
+                {guestCaptchaError && (
+                  <p className="text-sm text-hot-pink mt-2">{guestCaptchaError}</p>
+                )}
+                {guestAuthError && (
+                  <div className="mt-3 rounded-xl border border-hot-pink/40 bg-hot-pink/10 px-3 py-2 text-sm text-hot-pink">
+                    {guestAuthError}
+                  </div>
+                )}
                 <div className="mt-6 flex gap-3">
                   <button
                     onClick={() => {
                       if (!guestLoading) {
                         setGuestDialogOpen(false)
                         setGuestNameError(null)
+                        setGuestAuthError(null)
+                        setGuestCaptchaError(null)
+                        setCaptchaToken(null)
                       }
                     }}
                     className="flex-1 py-3 rounded-xl bg-surface text-ghost-white font-semibold hover:bg-muted/30 transition-colors"
