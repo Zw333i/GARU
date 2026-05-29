@@ -320,16 +320,57 @@ def load_cached_players() -> List[Dict]:
         with open(CACHE_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
         
+        def normalize_player_entries(raw_players: List[Dict]) -> List[Dict]:
+            normalized: List[Dict] = []
+            for p in raw_players:
+                if isinstance(p, dict) and "full_name" in p and "season_stats" in p:
+                    normalized.append(p)
+                    continue
+
+                stats = {
+                    "season": p.get("season") or CURRENT_SEASON,
+                    "gp": int(p.get("gp", 0) or 0),
+                    "mpg": round(float(p.get("mpg", 0) or 0), 1),
+                    "pts": round(float(p.get("pts", 0) or 0), 1),
+                    "reb": round(float(p.get("reb", 0) or 0), 1),
+                    "ast": round(float(p.get("ast", 0) or 0), 1),
+                    "stl": round(float(p.get("stl", 0) or 0), 1),
+                    "blk": round(float(p.get("blk", 0) or 0), 1),
+                    "fg_pct": round(float(p.get("fg_pct", 0) or 0), 1),
+                    "fg3_pct": round(float(p.get("fg3_pct", 0) or 0), 1),
+                    "ft_pct": round(float(p.get("ft_pct", 0) or 0), 1),
+                    "fga": round(float(p.get("fga", 0) or 0), 1),
+                    "fta": round(float(p.get("fta", 0) or 0), 1),
+                    "fg3a": round(float(p.get("fg3a", 0) or 0), 1),
+                    "fg3m": round(float(p.get("fg3m", 0) or 0), 1),
+                    "rating": int(p.get("rating", 0) or 0),
+                }
+
+                normalized.append({
+                    "player_id": p.get("player_id") or p.get("id"),
+                    "full_name": p.get("full_name") or p.get("name") or "Unknown",
+                    "team_id": int(p.get("team_id", 0) or 0),
+                    "team_abbreviation": p.get("team_abbreviation") or p.get("team") or "FA",
+                    "is_active": True,
+                    "position": p.get("position") or "SF",
+                    "season_stats": stats,
+                    "updated_at": datetime.now().isoformat(),
+                })
+
+            normalized.sort(key=lambda x: x.get("season_stats", {}).get("pts", 0), reverse=True)
+            return normalized
+
         # Handle old cache format: {"timestamp": "...", "season": "...", "count": 521, "players": [...]}
         if isinstance(data, dict) and "players" in data:
-            players = data["players"]
+            players = normalize_player_entries(data["players"])
             print(f"✅ Loaded {len(players)} players from legacy cache format")
             return players
         
         # Handle new cache format: flat list [...]
         if isinstance(data, list):
-            print(f"✅ Loaded {len(data)} players from cache")
-            return data
+            players = normalize_player_entries(data)
+            print(f"✅ Loaded {len(players)} players from cache")
+            return players
         
         print(f"⚠️  Unexpected cache format: {type(data)}")
         return []
@@ -428,7 +469,9 @@ def main():
     print(f"\n📊 Stats Summary:")
     print(f"   Total players: {len(players)}")
     if players:
-        print(f"   Top scorer: {players[0]['full_name']} ({players[0]['season_stats']['pts']} PPG)")
+        top_name = players[0].get("full_name") or players[0].get("name") or "Unknown"
+        top_pts = players[0].get("season_stats", {}).get("pts", players[0].get("pts", 0))
+        print(f"   Top scorer: {top_name} ({top_pts} PPG)")
     
     # Show position distribution
     positions = {}
