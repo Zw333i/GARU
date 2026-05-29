@@ -28,6 +28,7 @@ interface PlayerData {
   score: number
   answers: { questionId: number; answer: string; correct: boolean; timeTaken: number }[]
   finished?: boolean
+  last_seen?: number
 }
 
 interface Room {
@@ -47,6 +48,7 @@ interface Room {
 }
 
 const ROOM_FETCH_RETRIES = 6
+const SCORE_UPDATE_MAX_ATTEMPTS = 4
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -86,6 +88,7 @@ function GameContent() {
   const autoAdvanceTimerRef = React.useRef<number | null>(null)
   const warningPlayedRef = React.useRef(false)
   const warmupDoneRef = React.useRef(false)
+  const timerDuration = room?.timer_duration ?? 0
 
   // Global keyboard handler for Enter key
   useEffect(() => {
@@ -111,6 +114,15 @@ function GameContent() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showResult, room, currentQ])
+
+  useEffect(() => {
+    return () => {
+      if (autoAdvanceTimerRef.current) {
+        clearTimeout(autoAdvanceTimerRef.current)
+        autoAdvanceTimerRef.current = null
+      }
+    }
+  }, [])
 
   // Fetch room
   const fetchRoom = useCallback(async () => {
@@ -252,7 +264,7 @@ function GameContent() {
     if (loading || !room || answered || showResult) return
 
     if (!timerEndRef.current) {
-      timerEndRef.current = Date.now() + room.timer_duration * 1000
+      timerEndRef.current = Date.now() + timerDuration * 1000
     }
 
     const tick = () => {
@@ -279,7 +291,7 @@ function GameContent() {
 
     return () => clearInterval(timer)
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, room, answered, showResult, currentQ, soundEnabled])
+  }, [loading, room?.id, timerDuration, answered, showResult, currentQ, soundEnabled])
 
   const handleSubmit = async (timeout = false) => {
     if (answered || !room || !user) return
@@ -306,6 +318,7 @@ function GameContent() {
 
     setScore((prev) => prev + pointsEarned)
 
+    const now = Date.now()
     const newAnswer = {
       questionId: question.id,
       answer: guess,
@@ -331,7 +344,7 @@ function GameContent() {
     }
 
     // Update score with optimistic concurrency to reduce overwrite races for 2-5 players.
-    for (let attempt = 0; attempt < 4; attempt++) {
+    for (let attempt = 0; attempt < SCORE_UPDATE_MAX_ATTEMPTS; attempt++) {
       const { data: freshRoom, error: freshRoomError } = await supabase
         .from('multiplayer_rooms')
         .select('players, updated_at')
@@ -339,6 +352,10 @@ function GameContent() {
         .single()
 
       if (freshRoomError || !freshRoom) {
+        if (attempt < SCORE_UPDATE_MAX_ATTEMPTS - 1) {
+          await sleep(200)
+          continue
+        }
         break
       }
 
@@ -349,6 +366,7 @@ function GameContent() {
             ...p,
             score: p.score + pointsEarned,
             answers: [...(p.answers || []), newAnswer],
+            last_seen: now,
           }
         }
         return p
@@ -362,21 +380,26 @@ function GameContent() {
         .select('id, players, updated_at')
         .maybeSingle()
 
-      if (writeError) {
+      if (writeError || !writeResult) {
+        if (attempt < SCORE_UPDATE_MAX_ATTEMPTS - 1) {
+          await sleep(200)
+          continue
+        }
         break
       }
 
-      if (writeResult) {
-        setRoom(prev => prev ? {
-          ...prev,
-          players: writeResult.players as PlayerData[],
-          updated_at: writeResult.updated_at as string,
-        } : prev)
-        break
-      }
+      setRoom(prev => prev ? {
+        ...prev,
+        players: writeResult.players as PlayerData[],
+        updated_at: writeResult.updated_at as string,
+      } : prev)
+      break
     }
 
     // Set up for manual advance via Enter key (auto-advance after 5s as fallback)
+    if (autoAdvanceTimerRef.current) {
+      clearTimeout(autoAdvanceTimerRef.current)
+    }
     autoAdvanceTimerRef.current = window.setTimeout(() => {
       if (currentQ < room.questions.length - 1) {
         nextQuestion()
@@ -417,7 +440,7 @@ function GameContent() {
 
     if (freshRoom?.players) {
       const updatedPlayers = (freshRoom.players as PlayerData[]).map((p) =>
-        p.id === user.id ? { ...p, finished: true } : p
+        p.id === user.id ? { ...p, finished: true, last_seen: Date.now() } : p
       )
 
       const allFinished = updatedPlayers.every((p) =>

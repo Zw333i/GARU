@@ -31,6 +31,8 @@ interface PlayerData {
   id: string
   score: number
   answers: Answer[]
+  last_seen?: number
+  finished?: boolean
 }
 
 interface Question {
@@ -48,7 +50,7 @@ interface Room {
   id: string
   code: string
   host_id: string
-  guest_id: string
+  guest_id: string | null
   game_type: string
   question_count: number
   timer_duration: number
@@ -66,6 +68,10 @@ interface UserProfile {
   avatar_url?: string
 }
 
+const HEARTBEAT_INTERVAL_MS = 20000
+const INACTIVE_TIMEOUT_MS = 90000
+const AUTO_REMOVE_STORAGE_KEY = 'garu:autoRemoveInactive'
+
 function ResultsContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -82,7 +88,15 @@ function ResultsContent() {
   const [playAgainVotes, setPlayAgainVotes] = useState<string[]>([])
   const [hasVoted, setHasVoted] = useState(false)
   const [connected, setConnected] = useState(false)
+  const [autoRemoveInactive, setAutoRemoveInactive] = useState(true)
   const redirectingRef = useRef(false)
+  const lastStatusRef = useRef<Room['status'] | null>(null)
+
+  const roomId = room?.id
+  const roomStatus = room?.status
+  const hostId = room?.host_id
+  const userId = user?.id
+  const isHost = !!userId && hostId === userId
 
   const fetchRoom = useCallback(async () => {
     if (!roomCode) return
@@ -99,6 +113,7 @@ function ResultsContent() {
     }
 
     setRoom(data as Room)
+    lastStatusRef.current = (data as Room).status
 
     // Initialize play again votes from room data
     if (data.play_again_votes && Array.isArray(data.play_again_votes)) {
@@ -185,9 +200,133 @@ function ResultsContent() {
   }, [roomCode, router, statsSaved, soundEnabled])
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    const stored = window.localStorage.getItem(AUTO_REMOVE_STORAGE_KEY)
+    if (stored !== null) {
+      setAutoRemoveInactive(stored === 'true')
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(AUTO_REMOVE_STORAGE_KEY, String(autoRemoveInactive))
+  }, [autoRemoveInactive])
+
+  const touchPresence = useCallback(async () => {
+    if (!roomId || !userId) return
+
+    const { data, error } = await supabase
+      .from('multiplayer_rooms')
+      .select('players, updated_at')
+      .eq('id', roomId)
+      .single()
+
+    if (error || !data?.players) return
+
+    const players = data.players as PlayerData[]
+    if (!players.some(p => p.id === userId)) return
+
+    const now = Date.now()
+    const updatedPlayers = players.map(p =>
+      p.id === userId ? { ...p, last_seen: now } : p
+    )
+
+    await supabase
+      .from('multiplayer_rooms')
+      .update({ players: updatedPlayers })
+      .eq('id', roomId)
+      .eq('updated_at', data.updated_at)
+  }, [roomId, userId])
+
+  const pruneInactivePlayers = useCallback(async () => {
+    if (!roomId || !isHost || roomStatus !== 'finished') return
+
+    const { data, error } = await supabase
+      .from('multiplayer_rooms')
+      .select('players, updated_at, host_id, guest_id, play_again_votes')
+      .eq('id', roomId)
+      .single()
+
+    if (error || !data?.players) return
+
+    const now = Date.now()
+    const players = data.players as PlayerData[]
+    const isInactive = (player: PlayerData) => {
+      if (player.id === data.host_id) return false
+      const lastSeen = typeof player.last_seen === 'number' ? player.last_seen : now
+      return now - lastSeen > INACTIVE_TIMEOUT_MS
+    }
+
+    const filteredPlayers = players.filter(p => !isInactive(p))
+    if (filteredPlayers.length === players.length) return
+
+    const updatedVotes = (data.play_again_votes || []).filter((id: string) =>
+      filteredPlayers.some(p => p.id === id)
+    )
+
+    const nextGuest = data.guest_id && filteredPlayers.some(p => p.id === data.guest_id)
+      ? data.guest_id
+      : filteredPlayers.find(p => p.id !== data.host_id)?.id || null
+
+    await supabase
+      .from('multiplayer_rooms')
+      .update({ players: filteredPlayers, guest_id: nextGuest, play_again_votes: updatedVotes })
+      .eq('id', roomId)
+      .eq('updated_at', data.updated_at)
+  }, [roomId, roomStatus, isHost])
+
+  const handleKickPlayer = async (playerId: string) => {
+    if (!roomId || !isHost || playerId === hostId) return
+
+    const { data, error } = await supabase
+      .from('multiplayer_rooms')
+      .select('players, updated_at, host_id, guest_id, play_again_votes')
+      .eq('id', roomId)
+      .single()
+
+    if (error || !data?.players) return
+
+    const players = (data.players as PlayerData[]).filter(p => p.id !== playerId)
+    const updatedVotes = (data.play_again_votes || []).filter((id: string) =>
+      players.some(p => p.id === id)
+    )
+    const nextGuest = data.guest_id && players.some(p => p.id === data.guest_id)
+      ? data.guest_id
+      : players.find(p => p.id !== data.host_id)?.id || null
+
+    await supabase
+      .from('multiplayer_rooms')
+      .update({ players, guest_id: nextGuest, play_again_votes: updatedVotes })
+      .eq('id', roomId)
+      .eq('updated_at', data.updated_at)
+  }
+
+  useEffect(() => {
     // No need for local auth - using centralized auth store
     fetchRoom()
   }, [fetchRoom])
+
+  useEffect(() => {
+    if (!roomId || !userId) return
+
+    touchPresence()
+    const interval = setInterval(() => {
+      touchPresence()
+    }, HEARTBEAT_INTERVAL_MS)
+
+    return () => clearInterval(interval)
+  }, [roomId, userId, touchPresence])
+
+  useEffect(() => {
+    if (!autoRemoveInactive || !isHost || !roomId || roomStatus !== 'finished') return
+
+    pruneInactivePlayers()
+    const interval = setInterval(() => {
+      pruneInactivePlayers()
+    }, 10000)
+
+    return () => clearInterval(interval)
+  }, [autoRemoveInactive, isHost, roomId, roomStatus, pruneInactivePlayers])
 
   useEffect(() => {
     const handleReconnect = () => {
@@ -227,6 +366,8 @@ function ResultsContent() {
           const updatedRoom = payload.new as Room
 
           setRoom(updatedRoom)
+          const previousStatus = lastStatusRef.current
+          lastStatusRef.current = updatedRoom.status
           
           // Track play again votes
           if (updatedRoom.play_again_votes) {
@@ -234,7 +375,11 @@ function ResultsContent() {
           }
 
           // If room was reset to playing, redirect all players to game
-          if (updatedRoom.status === 'playing' && !redirectingRef.current) {
+          if (
+            updatedRoom.status === 'playing' &&
+            previousStatus === 'finished' &&
+            !redirectingRef.current
+          ) {
             redirectingRef.current = true
             router.push(`/multiplayer/game?code=${roomCode}`)
           }
@@ -252,6 +397,13 @@ function ResultsContent() {
       supabase.removeChannel(channel)
     }
   }, [roomCode, router, fetchRoom])
+
+  useEffect(() => {
+    if (!room || !userId) return
+    if (!room.players?.some(p => p.id === userId)) {
+      router.push('/multiplayer')
+    }
+  }, [room?.players, userId, router])
 
   // Check if all players have voted to play again → reset room
   useEffect(() => {
@@ -271,6 +423,7 @@ function ResultsContent() {
             answers: [],
             finished: false,
             username: profiles[p.id]?.username || '',
+            last_seen: Date.now(),
           }))
 
           await supabase
@@ -430,6 +583,14 @@ function ResultsContent() {
                   {profile?.username || 'Unknown'}
                   {isCurrentUser && <span className="text-muted text-sm"> (You)</span>}
                 </h3>
+                {isHost && player.id !== hostId && (
+                  <button
+                    onClick={() => handleKickPlayer(player.id)}
+                    className="mt-1 text-xs px-2 py-1 rounded-lg border border-hot-pink/40 text-hot-pink hover:bg-hot-pink/10 transition-colors"
+                  >
+                    Kick
+                  </button>
+                )}
                 <p className="text-3xl font-bold text-electric-lime mb-2">
                   {player.score}
                 </p>
@@ -526,6 +687,29 @@ function ResultsContent() {
           transition={{ delay: 0.6 }}
           className="space-y-3"
         >
+          {isHost && (
+            <div className="flex items-center justify-between gap-4 p-4 bg-surface/50 rounded-xl">
+              <div>
+                <p className="text-sm font-semibold">Auto-remove inactive players</p>
+                <p className="text-xs text-muted">Removes idle players after ~90s</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={autoRemoveInactive}
+                onClick={() => setAutoRemoveInactive(prev => !prev)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  autoRemoveInactive ? 'bg-electric-lime/70' : 'bg-surface'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    autoRemoveInactive ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          )}
           <button
             onClick={playAgain}
             disabled={hasVoted}

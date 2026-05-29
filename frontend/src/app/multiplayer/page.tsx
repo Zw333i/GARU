@@ -201,7 +201,7 @@ function MultiplayerContent() {
 
     autoJoinAttemptedRef.current = true
     setJoinCode(normalized)
-    handleJoinRoom()
+    handleJoinRoom(normalized)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [joinParam, authLoading, isAuthenticated, user])
 
@@ -320,8 +320,9 @@ function MultiplayerContent() {
     }
   }
 
-  const handleJoinRoom = async () => {
-    if (!joinCode.trim()) {
+  const handleJoinRoom = async (codeOverride?: string) => {
+    const rawCode = (codeOverride ?? joinCode).trim()
+    if (!rawCode) {
       setError('Enter a room code')
       return
     }
@@ -329,6 +330,8 @@ function MultiplayerContent() {
       setError('Sign in or continue as guest to join a game')
       return
     }
+
+    const normalizedCode = rawCode.toUpperCase()
 
     setLoading(true)
     setError(null)
@@ -352,7 +355,7 @@ function MultiplayerContent() {
         const { data: room, error: findError } = await supabase
           .from('multiplayer_rooms')
           .select('*')
-          .eq('code', joinCode.toUpperCase())
+          .eq('code', normalizedCode)
           .eq('status', 'waiting')
           .single()
 
@@ -429,7 +432,7 @@ function MultiplayerContent() {
         return
       }
 
-      router.push(`/multiplayer/lobby?code=${joinCode.toUpperCase()}`)
+      router.push(`/multiplayer/lobby?code=${normalizedCode}`)
     } catch (err: any) {
       console.error('Failed to join room:', err)
       setError(err?.message || 'Something went wrong. Please try again.')

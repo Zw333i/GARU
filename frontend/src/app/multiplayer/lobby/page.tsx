@@ -22,6 +22,7 @@ interface Player {
   answers: any[]
   username?: string
   avatar_url?: string
+  last_seen?: number
 }
 
 interface Room {
@@ -40,6 +41,9 @@ interface Room {
 }
 
 const ROOM_FETCH_RETRIES = 6
+const HEARTBEAT_INTERVAL_MS = 20000
+const INACTIVE_TIMEOUT_MS = 90000
+const AUTO_REMOVE_STORAGE_KEY = 'garu:autoRemoveInactive'
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -60,9 +64,30 @@ function LobbyContent() {
   const [startingGame, setStartingGame] = useState(false)
   const [connected, setConnected] = useState(false)
   const [playerProfiles, setPlayerProfiles] = useState<Record<string, { username: string; avatar_url: string | null }>>({})
+  const [autoRemoveInactive, setAutoRemoveInactive] = useState(true)
+
+  const roomId = room?.id
+  const roomStatus = room?.status
+  const hostId = room?.host_id
+  const userId = user?.id
+
+  const isHost = !!userId && hostId === userId
 
   // Track whether we've already started redirecting
   const redirectingRef = React.useRef(false)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const stored = window.localStorage.getItem(AUTO_REMOVE_STORAGE_KEY)
+    if (stored !== null) {
+      setAutoRemoveInactive(stored === 'true')
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(AUTO_REMOVE_STORAGE_KEY, String(autoRemoveInactive))
+  }, [autoRemoveInactive])
 
   const redirectToGame = useCallback(() => {
     if (redirectingRef.current || !roomCode) return
@@ -70,6 +95,88 @@ function LobbyContent() {
     console.log('[Lobby] Redirecting to game page...')
     router.push(`/multiplayer/game?code=${roomCode}`)
   }, [roomCode, router])
+
+  const touchPresence = useCallback(async () => {
+    if (!roomId || !userId) return
+
+    const { data, error } = await supabase
+      .from('multiplayer_rooms')
+      .select('players, updated_at')
+      .eq('id', roomId)
+      .single()
+
+    if (error || !data?.players) return
+
+    const players = data.players as Player[]
+    if (!players.some(p => p.id === userId)) return
+
+    const now = Date.now()
+    const updatedPlayers = players.map(p =>
+      p.id === userId ? { ...p, last_seen: now } : p
+    )
+
+    await supabase
+      .from('multiplayer_rooms')
+      .update({ players: updatedPlayers })
+      .eq('id', roomId)
+      .eq('updated_at', data.updated_at)
+  }, [roomId, userId])
+
+  const pruneInactivePlayers = useCallback(async () => {
+    if (!roomId || !isHost || roomStatus !== 'waiting') return
+
+    const { data, error } = await supabase
+      .from('multiplayer_rooms')
+      .select('players, updated_at, host_id, guest_id')
+      .eq('id', roomId)
+      .single()
+
+    if (error || !data?.players) return
+
+    const now = Date.now()
+    const players = data.players as Player[]
+    const isInactive = (player: Player) => {
+      if (player.id === data.host_id) return false
+      const lastSeen = typeof player.last_seen === 'number' ? player.last_seen : now
+      return now - lastSeen > INACTIVE_TIMEOUT_MS
+    }
+
+    const filteredPlayers = players.filter(p => !isInactive(p))
+    if (filteredPlayers.length === players.length) return
+
+    const nextGuest = data.guest_id && filteredPlayers.some(p => p.id === data.guest_id)
+      ? data.guest_id
+      : filteredPlayers.find(p => p.id !== data.host_id)?.id || null
+
+    await supabase
+      .from('multiplayer_rooms')
+      .update({ players: filteredPlayers, guest_id: nextGuest })
+      .eq('id', roomId)
+      .eq('updated_at', data.updated_at)
+  }, [roomId, roomStatus, isHost])
+
+  const handleKickPlayer = async (playerId: string) => {
+    if (!roomId || !isHost || playerId === hostId) return
+
+    const { data, error } = await supabase
+      .from('multiplayer_rooms')
+      .select('players, updated_at, host_id, guest_id')
+      .eq('id', roomId)
+      .single()
+
+    if (error || !data?.players) return
+
+    const players = (data.players as Player[]).filter(p => p.id !== playerId)
+    const nextGuest = data.guest_id && players.some(p => p.id === data.guest_id)
+      ? data.guest_id
+      : players.find(p => p.id !== data.host_id)?.id || null
+
+    await supabase
+      .from('multiplayer_rooms')
+      .update({ players, guest_id: nextGuest })
+      .eq('id', roomId)
+      .eq('updated_at', data.updated_at)
+  }
 
   // Fetch room data
   const fetchRoom = useCallback(async () => {
@@ -149,6 +256,28 @@ function LobbyContent() {
     }
   }, [fetchRoom])
 
+  useEffect(() => {
+    if (!roomId || !userId) return
+
+    touchPresence()
+    const interval = setInterval(() => {
+      touchPresence()
+    }, HEARTBEAT_INTERVAL_MS)
+
+    return () => clearInterval(interval)
+  }, [roomId, userId, touchPresence])
+
+  useEffect(() => {
+    if (!autoRemoveInactive || !isHost || !roomId || roomStatus !== 'waiting') return
+
+    pruneInactivePlayers()
+    const interval = setInterval(() => {
+      pruneInactivePlayers()
+    }, 10000)
+
+    return () => clearInterval(interval)
+  }, [autoRemoveInactive, isHost, roomId, roomStatus, pruneInactivePlayers])
+
   // Real-time subscription
   useEffect(() => {
     if (!roomCode) return
@@ -188,6 +317,13 @@ function LobbyContent() {
       supabase.removeChannel(channel)
     }
   }, [roomCode, redirectToGame])
+
+  useEffect(() => {
+    if (!room || !userId) return
+    if (!room.players?.some(p => p.id === userId)) {
+      router.push('/multiplayer')
+    }
+  }, [room?.players, userId, router])
 
   // Polling fallback — aggressive while reconnecting, relaxed when websocket is healthy.
   useEffect(() => {
@@ -325,7 +461,6 @@ function LobbyContent() {
     )
   }
 
-  const isHost = !!user && user.id === room.host_id
   const canStart = (room.players?.length || 0) >= 2
   const maxPlayers = room.max_players || 5
   const emptySlots = Math.max(0, maxPlayers - (room.players?.length || 0))
@@ -454,9 +589,19 @@ function LobbyContent() {
                     <p className="font-bold">{displayName}</p>
                     <p className="text-xs text-muted">{isPlayerHost ? 'Host' : `Player ${index + 1}`}</p>
                   </div>
-                  <span className="text-electric-lime flex items-center gap-1">
-                    <CheckIcon size={14} /> Ready
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {isHost && !isPlayerHost && (
+                      <button
+                        onClick={() => handleKickPlayer(player.id)}
+                        className="text-xs px-2 py-1 rounded-lg border border-hot-pink/40 text-hot-pink hover:bg-hot-pink/10 transition-colors"
+                      >
+                        Kick
+                      </button>
+                    )}
+                    <span className="text-electric-lime flex items-center gap-1">
+                      <CheckIcon size={14} /> Ready
+                    </span>
+                  </div>
                 </motion.div>
               )
             })}
@@ -483,6 +628,30 @@ function LobbyContent() {
 
         {/* Actions */}
         <div className="space-y-3">
+          {isHost && (
+            <div className="flex items-center justify-between gap-4 p-4 bg-surface/50 rounded-xl">
+              <div>
+                <p className="text-sm font-semibold">Auto-remove inactive players</p>
+                <p className="text-xs text-muted">Removes idle players after ~90s</p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={autoRemoveInactive}
+                onClick={() => setAutoRemoveInactive(prev => !prev)}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  autoRemoveInactive ? 'bg-electric-lime/70' : 'bg-surface'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    autoRemoveInactive ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+          )}
+
           {isHost && (
             <button
               onClick={handleStartGame}
