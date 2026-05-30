@@ -75,6 +75,8 @@ function LobbyContent() {
 
   // Track whether we've already started redirecting
   const redirectingRef = React.useRef(false)
+  const leavingRef = React.useRef(false)
+  const lastSeenRef = React.useRef<number | null>(null)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -88,6 +90,14 @@ function LobbyContent() {
     if (typeof window === 'undefined') return
     window.localStorage.setItem(AUTO_REMOVE_STORAGE_KEY, String(autoRemoveInactive))
   }, [autoRemoveInactive])
+
+  useEffect(() => {
+    if (!room || !userId) return
+    const me = room.players?.find(p => p.id === userId)
+    if (typeof me?.last_seen === 'number') {
+      lastSeenRef.current = me.last_seen
+    }
+  }, [room?.players, userId])
 
   const redirectToGame = useCallback(() => {
     if (redirectingRef.current || !roomCode) return
@@ -321,6 +331,17 @@ function LobbyContent() {
   useEffect(() => {
     if (!room || !userId) return
     if (!room.players?.some(p => p.id === userId)) {
+      if (!leavingRef.current) {
+        const now = Date.now()
+        const lastSeen = lastSeenRef.current
+        const wasInactive = typeof lastSeen === 'number' && now - lastSeen > INACTIVE_TIMEOUT_MS
+        const notice = wasInactive
+          ? 'You were removed from the room due to inactivity.'
+          : 'You were removed from the room by the host.'
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.setItem('garu:mpExitNotice', notice)
+        }
+      }
       router.push('/multiplayer')
     }
   }, [room?.players, userId, router])
@@ -401,6 +422,7 @@ function LobbyContent() {
 
   const handleLeaveRoom = async () => {
     if (!room || !user) return
+    leavingRef.current = true
 
     if (isHost) {
       // Delete room if host leaves
@@ -468,16 +490,6 @@ function LobbyContent() {
   return (
     <div className="min-h-screen py-8 px-4">
       <div className="max-w-lg mx-auto">
-        {/* Connection Status */}
-        <div className="flex justify-end mb-2">
-          <div className={`flex items-center gap-2 text-xs px-3 py-1 rounded-full ${
-            connected ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
-          }`}>
-            <div className={`w-2 h-2 rounded-full ${connected ? 'bg-green-400' : 'bg-yellow-400 animate-pulse'}`} />
-            {connected ? 'Connected' : 'Connecting...'}
-          </div>
-        </div>
-
         {/* Error Banner */}
         <AnimatePresence>
           {error && (

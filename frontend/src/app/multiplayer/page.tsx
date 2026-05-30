@@ -181,6 +181,7 @@ function MultiplayerContent() {
   const [guestAuthError, setGuestAuthError] = useState<string | null>(null)
   const [guestCaptchaError, setGuestCaptchaError] = useState<string | null>(null)
   const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  const [exitNotice, setExitNotice] = useState<string | null>(null)
   const autoJoinAttemptedRef = useRef(false)
 
   useEffect(() => {
@@ -209,6 +210,21 @@ function MultiplayerContent() {
   useEffect(() => {
     setError(null)
   }, [mode])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const stored = window.sessionStorage.getItem('garu:mpExitNotice')
+    if (stored) {
+      setExitNotice(stored)
+      window.sessionStorage.removeItem('garu:mpExitNotice')
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!exitNotice) return
+    const timer = setTimeout(() => setExitNotice(null), 5000)
+    return () => clearTimeout(timer)
+  }, [exitNotice])
 
   const handleCreateRoom = async () => {
     if (!selectedGame) {
@@ -539,6 +555,22 @@ function MultiplayerContent() {
 
         {/* Error Banner */}
         <AnimatePresence>
+          {exitNotice && (
+            <motion.div
+              initial={{ opacity: 0, y: -10, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: 'auto' }}
+              exit={{ opacity: 0, y: -10, height: 0 }}
+              className="mb-4"
+            >
+              <div className="bg-surface border border-hot-pink/40 rounded-xl px-4 py-3 flex items-center gap-3">
+                <XIcon size={16} className="text-hot-pink shrink-0" />
+                <p className="text-sm text-ghost-white flex-1">{exitNotice}</p>
+                <button onClick={() => setExitNotice(null)} className="text-hot-pink/60 hover:text-hot-pink">
+                  <XIcon size={14} />
+                </button>
+              </div>
+            </motion.div>
+          )}
           {error && (
             <motion.div
               initial={{ opacity: 0, y: -10, height: 0 }}
@@ -753,9 +785,12 @@ function MultiplayerContent() {
               <p className="text-xs text-muted text-center mt-2">
                 Ask the host for the 6-character room code
               </p>
+              <p className="text-xs text-muted text-center mt-2">
+                Auto-join just means if someone opens /multiplayer?join=ROOMCODE
+              </p>
 
               <button
-                onClick={handleJoinRoom}
+                onClick={() => handleJoinRoom()}
                 disabled={loading || !isAuthenticated || authLoading || joinCode.length !== 6}
                 className="w-full mt-4 py-4 bg-hot-pink text-white font-bold rounded-xl hover:bg-pink-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >

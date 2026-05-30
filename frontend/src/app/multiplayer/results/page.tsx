@@ -91,6 +91,8 @@ function ResultsContent() {
   const [autoRemoveInactive, setAutoRemoveInactive] = useState(true)
   const redirectingRef = useRef(false)
   const lastStatusRef = useRef<Room['status'] | null>(null)
+  const leavingRef = useRef(false)
+  const lastSeenRef = useRef<number | null>(null)
 
   const roomId = room?.id
   const roomStatus = room?.status
@@ -211,6 +213,14 @@ function ResultsContent() {
     if (typeof window === 'undefined') return
     window.localStorage.setItem(AUTO_REMOVE_STORAGE_KEY, String(autoRemoveInactive))
   }, [autoRemoveInactive])
+
+  useEffect(() => {
+    if (!room || !userId) return
+    const me = room.players?.find(p => p.id === userId)
+    if (typeof me?.last_seen === 'number') {
+      lastSeenRef.current = me.last_seen
+    }
+  }, [room?.players, userId])
 
   const touchPresence = useCallback(async () => {
     if (!roomId || !userId) return
@@ -401,6 +411,17 @@ function ResultsContent() {
   useEffect(() => {
     if (!room || !userId) return
     if (!room.players?.some(p => p.id === userId)) {
+      if (!leavingRef.current) {
+        const now = Date.now()
+        const lastSeen = lastSeenRef.current
+        const wasInactive = typeof lastSeen === 'number' && now - lastSeen > INACTIVE_TIMEOUT_MS
+        const notice = wasInactive
+          ? 'You were removed from the room due to inactivity.'
+          : 'You were removed from the room by the host.'
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.setItem('garu:mpExitNotice', notice)
+        }
+      }
       router.push('/multiplayer')
     }
   }, [room?.players, userId, router])
@@ -478,6 +499,7 @@ function ResultsContent() {
   }
 
   const backToMenu = () => {
+    leavingRef.current = true
     router.push('/multiplayer')
   }
 
