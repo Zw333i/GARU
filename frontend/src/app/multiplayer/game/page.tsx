@@ -70,6 +70,7 @@ function GameContent() {
   const [answered, setAnswered] = useState(false)
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null)
   const [timeLeft, setTimeLeft] = useState(0)
+  const [localTimerDuration, setLocalTimerDuration] = useState<number | null>(null)
   const [score, setScore] = useState(0)
   const [correctStreak, setCorrectStreak] = useState(0)
   const [answers, setAnswers] = useState<PlayerData['answers']>([])
@@ -88,32 +89,7 @@ function GameContent() {
   const autoAdvanceTimerRef = React.useRef<number | null>(null)
   const warningPlayedRef = React.useRef(false)
   const warmupDoneRef = React.useRef(false)
-  const timerDuration = room?.timer_duration ?? 0
-
-  // Global keyboard handler for Enter key
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Enter') return
-
-      // If showing result, advance to next question immediately
-      if (showResult && room) {
-        e.preventDefault()
-        // Cancel auto-advance timer
-        if (autoAdvanceTimerRef.current) {
-          clearTimeout(autoAdvanceTimerRef.current)
-          autoAdvanceTimerRef.current = null
-        }
-        if (currentQ < room.questions.length - 1) {
-          nextQuestion()
-        } else {
-          finishGame()
-        }
-      }
-    }
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showResult, room, currentQ])
+  const timerDuration = localTimerDuration ?? room?.timer_duration ?? 0
 
   useEffect(() => {
     return () => {
@@ -138,6 +114,7 @@ function GameContent() {
       if (data) {
         setRoom(data as Room)
         if (!initializedRef.current) {
+          setLocalTimerDuration(data.timer_duration)
           setCurrentQ(0)
           setTimeLeft(data.timer_duration)
           setQuestionStartTime(Date.now())
@@ -160,6 +137,11 @@ function GameContent() {
 
     router.push('/multiplayer')
   }, [roomCode, router])
+
+  useEffect(() => {
+    if (!room || localTimerDuration !== null) return
+    setLocalTimerDuration(room.timer_duration)
+  }, [room?.id, room?.timer_duration, localTimerDuration])
 
   useEffect(() => {
     // No need for local auth - using centralized auth store
@@ -261,7 +243,7 @@ function GameContent() {
 
   // Timer countdown
   useEffect(() => {
-    if (loading || !room || answered || showResult) return
+    if (loading || !room || answered || showResult || !timerDuration) return
 
     if (!timerEndRef.current) {
       timerEndRef.current = Date.now() + timerDuration * 1000
@@ -313,7 +295,10 @@ function GameContent() {
 
     // Calculate points (bonus for speed)
     const basePoints = correct ? 100 : 0
-    const speedBonus = correct ? Math.floor((timeLeft / room.timer_duration) * 50) : 0
+    const effectiveDuration = timerDuration || room.timer_duration
+    const speedBonus = correct && effectiveDuration > 0
+      ? Math.floor((timeLeft / effectiveDuration) * 50)
+      : 0
     const pointsEarned = basePoints + speedBonus
 
     setScore((prev) => prev + pointsEarned)
@@ -413,15 +398,16 @@ function GameContent() {
     if (!room) return
 
     const nextQ = currentQ + 1
+    const nextDuration = timerDuration || room.timer_duration
     setCurrentQ(nextQ)
     setGuess('')
     setAnswered(false)
     setIsCorrect(null)
     setTimedOut(false)
     setShowResult(false)
-    setTimeLeft(room.timer_duration)
+    setTimeLeft(nextDuration)
     setQuestionStartTime(Date.now())
-    timerEndRef.current = Date.now() + room.timer_duration * 1000
+    timerEndRef.current = Date.now() + nextDuration * 1000
     warningPlayedRef.current = false
 
   }
@@ -458,6 +444,31 @@ function GameContent() {
 
     router.push(`/multiplayer/results?code=${roomCode}`)
   }
+
+  const handleAdvance = useCallback(() => {
+    if (!room) return
+    if (autoAdvanceTimerRef.current) {
+      clearTimeout(autoAdvanceTimerRef.current)
+      autoAdvanceTimerRef.current = null
+    }
+    if (currentQ < room.questions.length - 1) {
+      nextQuestion()
+    } else {
+      finishGame()
+    }
+  }, [room, currentQ, nextQuestion, finishGame])
+
+  // Global keyboard handler for Enter key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Enter') return
+      if (!showResult) return
+      e.preventDefault()
+      handleAdvance()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [showResult, handleAdvance])
 
   if (loading || !room) {
     return (
@@ -506,7 +517,7 @@ function GameContent() {
           <motion.div
             className="h-full bg-electric-lime"
             initial={{ width: '100%' }}
-            animate={{ width: `${(timeLeft / room.timer_duration) * 100}%` }}
+            animate={{ width: `${timerDuration > 0 ? (timeLeft / timerDuration) * 100 : 0}%` }}
             transition={{ duration: 0.5 }}
           />
         </div>
@@ -614,6 +625,9 @@ function GameContent() {
               key="result"
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
+              onClick={handleAdvance}
+              role="button"
+              tabIndex={0}
               className={`p-6 rounded-2xl text-center ${
                 isCorrect 
                   ? 'bg-electric-lime/20 border-2 border-electric-lime' 
@@ -628,11 +642,11 @@ function GameContent() {
               </p>
               {isCorrect && (
                 <p className="text-sm text-electric-lime mt-2">
-                  +{100 + Math.floor((timeLeft / room.timer_duration) * 50)} points!
+                  +{100 + (timerDuration > 0 ? Math.floor((timeLeft / timerDuration) * 50) : 0)} points!
                 </p>
               )}
               <p className="text-xs text-muted mt-3 animate-pulse">
-                Press Enter to continue
+                Tap or click to continue
               </p>
             </motion.div>
           )}
