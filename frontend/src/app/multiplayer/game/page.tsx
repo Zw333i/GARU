@@ -79,7 +79,7 @@ function GameContent() {
   const [questionStartTime, setQuestionStartTime] = useState<number>(0)
   const [connected, setConnected] = useState(false)
   const initializedRef = React.useRef(false)
-  const timerEndRef = React.useRef<number | null>(null)
+  const questionStartRef = React.useRef<number | null>(null)
 
   // Ref to avoid stale closure in timer
   const answeredRef = React.useRef(answered)
@@ -114,11 +114,12 @@ function GameContent() {
       if (data) {
         setRoom(data as Room)
         if (!initializedRef.current) {
+          const startAt = Date.now()
           setLocalTimerDuration(data.timer_duration)
           setCurrentQ(0)
           setTimeLeft(data.timer_duration)
-          setQuestionStartTime(Date.now())
-          timerEndRef.current = Date.now() + data.timer_duration * 1000
+          setQuestionStartTime(startAt)
+          questionStartRef.current = startAt
           warningPlayedRef.current = false
           setLoading(false)
           initializedRef.current = true
@@ -245,12 +246,16 @@ function GameContent() {
   useEffect(() => {
     if (loading || !room || answered || showResult || !timerDuration) return
 
-    if (!timerEndRef.current) {
-      timerEndRef.current = Date.now() + timerDuration * 1000
+    if (!questionStartRef.current && questionStartTime) {
+      questionStartRef.current = questionStartTime
     }
 
+    const startAt = questionStartRef.current
+    if (!startAt) return
+    const endAt = startAt + timerDuration * 1000
+
     const tick = () => {
-      const remainingMs = Math.max(0, (timerEndRef.current || 0) - Date.now())
+      const remainingMs = Math.max(0, endAt - Date.now())
       const next = Math.ceil(remainingMs / 1000)
 
       setTimeLeft((prev) => (prev === next ? prev : next))
@@ -399,6 +404,7 @@ function GameContent() {
 
     const nextQ = currentQ + 1
     const nextDuration = timerDuration || room.timer_duration
+    const startAt = Date.now()
     setCurrentQ(nextQ)
     setGuess('')
     setAnswered(false)
@@ -406,8 +412,8 @@ function GameContent() {
     setTimedOut(false)
     setShowResult(false)
     setTimeLeft(nextDuration)
-    setQuestionStartTime(Date.now())
-    timerEndRef.current = Date.now() + nextDuration * 1000
+    setQuestionStartTime(startAt)
+    questionStartRef.current = startAt
     warningPlayedRef.current = false
 
   }
